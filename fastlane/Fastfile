@@ -1,0 +1,86 @@
+default_platform(:ios)
+
+SCHEME = "com.vn.sstp"
+PROJECT = "com.vn.sstp.xcodeproj"
+APP_IDENTIFIER = "ru.altatec.sstp-client"
+TUNNEL_IDENTIFIER = "ru.altatec.sstp-client.tunnel"
+
+def parse_asc_api_key_json(raw_json)
+  require "json"
+  data = JSON.parse(raw_json)
+
+  key_id = data["key_id"] || data["keyId"] || data["KEY_ID"]
+  issuer_id = data["issuer_id"] || data["issuerId"] || data["ISSUER_ID"]
+  key = data["key"] || data["private_key"] || data["privateKey"] || data["p8"] || data["KEY"]
+
+  UI.user_error!("ALTATEC_APPSTORECONNECT_API_KEY JSON must include key_id/keyId") if key_id.to_s.empty?
+  UI.user_error!("ALTATEC_APPSTORECONNECT_API_KEY JSON must include issuer_id/issuerId") if issuer_id.to_s.empty?
+  UI.user_error!("ALTATEC_APPSTORECONNECT_API_KEY JSON must include key/private_key") if key.to_s.empty?
+
+  key = key.gsub("\\n", "\n")
+  unless key.include?("BEGIN PRIVATE KEY")
+    key = "-----BEGIN PRIVATE KEY-----\n#{key}\n-----END PRIVATE KEY-----"
+  end
+
+  {
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key: key
+  }
+end
+
+platform :ios do
+  desc "Build signed IPA and upload to TestFlight"
+  lane :beta do
+    api_key_json = ENV["ALTATEC_APPSTORECONNECT_API_KEY"]
+    UI.user_error!("Missing ALTATEC_APPSTORECONNECT_API_KEY") if api_key_json.to_s.empty?
+
+    parsed = parse_asc_api_key_json(api_key_json)
+    api_key = app_store_connect_api_key(
+      key_id: parsed[:key_id],
+      issuer_id: parsed[:issuer_id],
+      key_content: parsed[:key],
+      is_key_content_base64: false,
+      duration: 1200,
+      in_house: false
+    )
+
+    team_id = ENV.fetch("IOS_TEAM_ID")
+    app_profile_name = ENV.fetch("APP_PROFILE_NAME")
+    tunnel_profile_name = ENV.fetch("TUNNEL_PROFILE_NAME")
+    build_number = ENV.fetch("BUILD_NUMBER", ENV.fetch("GITHUB_RUN_NUMBER", "1"))
+
+    UI.message("Building #{APP_IDENTIFIER} (#{build_number}) for TestFlight")
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      clean: true,
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: "sstp-client",
+      skip_profile_detection: true,
+      export_options: {
+        method: "app-store",
+        signingStyle: "manual",
+        teamID: team_id,
+        provisioningProfiles: {
+          APP_IDENTIFIER => app_profile_name,
+          TUNNEL_IDENTIFIER => tunnel_profile_name
+        },
+        uploadBitcode: false,
+        compileBitcode: false,
+        uploadSymbols: true
+      }
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      changelog: "CI build #{build_number} (GitHub Actions run #{ENV['GITHUB_RUN_NUMBER']})"
+    )
+  end
+end

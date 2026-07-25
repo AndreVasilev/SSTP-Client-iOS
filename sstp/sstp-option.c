@@ -33,6 +33,10 @@
 #include "sstp-private.h"
 
 
+#ifdef SSTP_IOS
+void sstp_ios_fail(const char *message);
+#endif
+
 void sstp_die(const char *message, int code, ...)
 {
     va_list list;
@@ -54,8 +58,14 @@ void sstp_die(const char *message, int code, ...)
     vprintf(format, list);
     va_end(list);
 
+#ifdef SSTP_IOS
+    /* Network Extension must not call exit(); unwind via session fail. */
+    (void)code;
+    sstp_ios_fail(buff);
+#else
     /* Exit */
     exit(code);
+#endif
 }
 
 
