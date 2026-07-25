@@ -109,7 +109,7 @@ static void on_fail(void *ctx, const char *message)
     ipv4.includedRoutes = @[[NEIPv4Route defaultRoute]];
     settings.ipv4Settings = ipv4;
     settings.dnsSettings = [[NEDNSSettings alloc] initWithServers:@[dns1, dns2]];
-    settings.mtu = @1400;
+    settings.MTU = @1400;
 
     __weak typeof(self) weakSelf = self;
     [self setTunnelNetworkSettings:settings completionHandler:^(NSError *error) {
