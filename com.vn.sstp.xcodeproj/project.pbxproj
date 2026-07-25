@@ -22,6 +22,10 @@
 		7B84C0CB2AA5856300E6B3DD /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B84C0CA2AA5856300E6B3DD /* NetworkExtension.framework */; };
 		7B84C0D12AA585A700E6B3DD /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B84C0CA2AA5856300E6B3DD /* NetworkExtension.framework */; };
 		7B84C0D52AA585A700E6B3DD /* PacketTunnelProvider.m in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0D42AA585A700E6B3DD /* PacketTunnelProvider.m */; };
+		A11B00012B10000100B00002 /* ios-pppd.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00001 /* ios-pppd.c */; };
+		A11B00012B10000100B00003 /* ios-pppd.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00001 /* ios-pppd.c */; };
+		A11B00012B10000100B00005 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
+		A11B00012B10000100B00006 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
 		7B84C0DA2AA585A700E6B3DD /* tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7B84C0D02AA585A700E6B3DD /* tunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7B84C1022AA5862B00E6B3DD /* sstp-fcs.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0E02AA5862A00E6B3DD /* sstp-fcs.c */; };
 		7B84C1032AA5862B00E6B3DD /* sstp-fcs.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0E02AA5862A00E6B3DD /* sstp-fcs.c */; };
@@ -51,8 +55,6 @@
 		7B84C11B2AA5862B00E6B3DD /* sstp-util.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0F72AA5862B00E6B3DD /* sstp-util.c */; };
 		7B84C11C2AA5862B00E6B3DD /* sstp-client.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0F82AA5862B00E6B3DD /* sstp-client.c */; };
 		7B84C11D2AA5862B00E6B3DD /* sstp-client.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0F82AA5862B00E6B3DD /* sstp-client.c */; };
-		7B84C11E2AA5862B00E6B3DD /* sstp-pppd.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0F92AA5862B00E6B3DD /* sstp-pppd.c */; };
-		7B84C11F2AA5862B00E6B3DD /* sstp-pppd.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0F92AA5862B00E6B3DD /* sstp-pppd.c */; };
 		7B84C1202AA5862B00E6B3DD /* sstp-state.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C1002AA5862B00E6B3DD /* sstp-state.c */; };
 		7B84C1212AA5862B00E6B3DD /* sstp-state.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C1002AA5862B00E6B3DD /* sstp-state.c */; };
 		7B84C1282AA77D7000E6B3DD /* libssl.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B84C1272AA77D6600E6B3DD /* libssl.a */; };
@@ -150,6 +152,9 @@
 		7B84C0F72AA5862B00E6B3DD /* sstp-util.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-util.c"; sourceTree = "<group>"; };
 		7B84C0F82AA5862B00E6B3DD /* sstp-client.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-client.c"; sourceTree = "<group>"; };
 		7B84C0F92AA5862B00E6B3DD /* sstp-pppd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-pppd.c"; sourceTree = "<group>"; };
+		A11B00012B10000100B00001 /* ios-pppd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "ios-pppd.c"; sourceTree = "<group>"; };
+		A11B00012B10000100B00004 /* sstp-ios.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-ios.c"; sourceTree = "<group>"; };
+		A11B00012B10000100B00007 /* sstp-ios.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-ios.h"; sourceTree = "<group>"; };
 		7B84C0FA2AA5862B00E6B3DD /* sstp-dump.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-dump.h"; sourceTree = "<group>"; };
 		7B84C0FB2AA5862B00E6B3DD /* sstp-buff.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-buff.h"; sourceTree = "<group>"; };
 		7B84C0FC2AA5862B00E6B3DD /* sstp-http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-http.h"; sourceTree = "<group>"; };
@@ -304,6 +309,9 @@
 				7B84C0E82AA5862A00E6B3DD /* sstp-packet.h */,
 				7B84C0EB2AA5862A00E6B3DD /* sstp-ppp.h */,
 				7B84C0F92AA5862B00E6B3DD /* sstp-pppd.c */,
+				A11B00012B10000100B00001 /* ios-pppd.c */,
+				A11B00012B10000100B00004 /* sstp-ios.c */,
+				A11B00012B10000100B00007 /* sstp-ios.h */,
 				7B84C0F42AA5862B00E6B3DD /* sstp-pppd.h */,
 				7B84C0E52AA5862A00E6B3DD /* sstp-private.h */,
 				7B84C0F32AA5862B00E6B3DD /* sstp-route.c */,
@@ -447,7 +455,8 @@
 				7B84C0BA2AA5853700E6B3DD /* com_vn_sstp.xcdatamodeld in Sources */,
 				7B84C10C2AA5862B00E6B3DD /* sstp-cmac.c in Sources */,
 				7BFC201A2AB89FD400CE1979 /* sstp-log-std.c in Sources */,
-				7B84C11E2AA5862B00E6B3DD /* sstp-pppd.c in Sources */,
+				A11B00012B10000100B00002 /* ios-pppd.c in Sources */,
+				A11B00012B10000100B00005 /* sstp-ios.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -465,7 +474,6 @@
 				7B84C11D2AA5862B00E6B3DD /* sstp-client.c in Sources */,
 				7BFC201B2AB89FD400CE1979 /* sstp-log-std.c in Sources */,
 				7B84C10F2AA5862B00E6B3DD /* sstp-http.c in Sources */,
-				7B84C11F2AA5862B00E6B3DD /* sstp-pppd.c in Sources */,
 				7B84C1132AA5862B00E6B3DD /* sstp-chap.c in Sources */,
 				7BFC201D2AB89FD400CE1979 /* sstp-log-file.c in Sources */,
 				7B84C0D52AA585A700E6B3DD /* PacketTunnelProvider.m in Sources */,
@@ -477,6 +485,8 @@
 				7B84C1152AA5862B00E6B3DD /* sstp-task.c in Sources */,
 				7B84C1052AA5862B00E6B3DD /* sstp-option.c in Sources */,
 				7B84C1172AA5862B00E6B3DD /* sstp-route.c in Sources */,
+				A11B00012B10000100B00003 /* ios-pppd.c in Sources */,
+				A11B00012B10000100B00006 /* sstp-ios.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -637,6 +647,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/include",
 					"$(PROJECT_DIR)/libevent/include",
+					"$(PROJECT_DIR)/sstp",
 				);
 				INFOPLIST_FILE = com.vn.sstp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -655,6 +666,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lssl",
+					"-lcrypto",
 					"-levent",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "cen.com-vn-sstp";
@@ -679,6 +691,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/include",
 					"$(PROJECT_DIR)/libevent/include",
+					"$(PROJECT_DIR)/sstp",
 				);
 				INFOPLIST_FILE = com.vn.sstp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -697,6 +710,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lssl",
+					"-lcrypto",
 					"-levent",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "cen.com-vn-sstp";
@@ -718,6 +732,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/include",
 					"$(PROJECT_DIR)/libevent/include",
+					"$(PROJECT_DIR)/sstp",
 				);
 				INFOPLIST_FILE = tunnel/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = tunnel;
@@ -734,6 +749,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lssl",
+					"-lcrypto",
 					"-levent",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "cen.com-vn-sstp.tunnel";
@@ -756,6 +772,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/include",
 					"$(PROJECT_DIR)/libevent/include",
+					"$(PROJECT_DIR)/sstp",
 				);
 				INFOPLIST_FILE = tunnel/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = tunnel;
@@ -772,6 +789,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lssl",
+					"-lcrypto",
 					"-levent",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "cen.com-vn-sstp.tunnel";
