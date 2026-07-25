@@ -14,14 +14,15 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
 
-#include "sstp-client.h"
-#include "sstp-http.h"
-#include "sstp-ios.h"
+/* private.h must come first: it defines status_t / stream / option types */
 #include "sstp-private.h"
+#include "sstp-client.h"
+#include "sstp-ios.h"
 
 void sstp_pppd_set_ip_handler(sstp_pppd_st *ctx, void (*fn)(void *, const uint8_t *, int), void *arg);
 void sstp_pppd_set_mppe_keys(sstp_pppd_st *ctx, const uint8_t skey[16], const uint8_t rkey[16]);

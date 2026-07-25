@@ -334,6 +334,12 @@ status_t sstp_init_log(const char *name, int opts, int level)
     return SSTP_OKAY;
 }
 
+/*! Public alias declared in sstp-log.h (level/mask then opts). */
+status_t sstp_log_init(const char *name, int mask, int opts)
+{
+    return sstp_init_log(name, opts, mask);
+}
+
 
 void sstp_log_usage(void)
 {
