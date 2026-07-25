@@ -2,33 +2,48 @@
 //  PacketTunnelProvider.m
 //  tunnel
 //
-//  Created by Anh Viet on 04/09/2023.
-//
 
 #import "PacketTunnelProvider.h"
 
 @implementation PacketTunnelProvider
 
 - (void)startTunnelWithOptions:(NSDictionary *)options completionHandler:(void (^)(NSError *))completionHandler {
-    // Add code here to start the process of connecting the tunnel.
+    NSString *server = options[@"server"] ?: ((NETunnelProviderProtocol *)self.protocolConfiguration).serverAddress;
+    NSString *username = options[@"username"] ?: ((NETunnelProviderProtocol *)self.protocolConfiguration).username;
+
+    NSLog(@"[SSTP] startTunnel server=%@ user=%@", server, username);
+
+    // The vendored sstp-client is a Linux/pppd CLI stack and is not yet adapted
+    // to NEPacketTunnelProvider packetFlow. Fail clearly instead of hanging.
+    NSError *error = [NSError errorWithDomain:@"NETunnelProviderErrorDomain"
+                                         code:1
+                                     userInfo:@{
+        NSLocalizedDescriptionKey:
+            @"SSTP-движок пока не подключён к Network Extension. "
+            @"Профиль и UI готовы, но установка туннеля ещё не реализована.",
+        NSLocalizedFailureReasonErrorKey:
+            @"Библиотека sstp-client ожидает pppd и не работает как iOS Packet Tunnel.",
+        NSLocalizedRecoverySuggestionErrorKey:
+            @"Нужна портивная реализация SSTP/PPP поверх NEPacketTunnelFlow."
+    }];
+    completionHandler(error);
 }
 
 - (void)stopTunnelWithReason:(NEProviderStopReason)reason completionHandler:(void (^)(void))completionHandler {
-    // Add code here to start the process of stopping the tunnel.
     completionHandler();
 }
 
 - (void)handleAppMessage:(NSData *)messageData completionHandler:(void (^)(NSData *))completionHandler {
-    // Add code here to handle the message.
+    if (completionHandler) {
+        completionHandler(nil);
+    }
 }
 
 - (void)sleepWithCompletionHandler:(void (^)(void))completionHandler {
-    // Add code here to get ready to sleep.
     completionHandler();
 }
 
 - (void)wake {
-    // Add code here to wake up.
 }
 
 @end
