@@ -3,104 +3,11 @@ name: iOS TestFlight
 on:
   push:
     branches:
-      - main
       - cursor/fix-build-errors-7bd7
   workflow_dispatch:
 
-concurrency:
-  group: ios-testflight-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  # Cheap canary: confirms Actions can schedule this workflow at all.
-  # (Recent runs hit GitHub "Internal server error" with zero jobs.)
   canary:
-    name: Canary
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: OK
-        run: echo "workflow scheduled on ${{ github.ref_name }} @ ${{ github.sha }}"
-
-  build-and-upload:
-    name: Build and upload to TestFlight
-    needs: canary
-    runs-on: macos-26
-    timeout-minutes: 90
-
-    env:
-      APP_BUNDLE_ID: ru.altatec.sstp-client
-      TUNNEL_BUNDLE_ID: ru.altatec.sstp-client.tunnel
-      BUILD_NUMBER: ${{ github.run_number }}
-      FASTLANE_SKIP_UPDATE_CHECK: 1
-      FASTLANE_HIDE_CHANGELOG: 1
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: |
-          # App Store Connect requires iOS 26 SDK (Xcode 26+).
-          for candidate in \
-            /Applications/Xcode_26.6.app \
-            /Applications/Xcode_26.5.app \
-            /Applications/Xcode_26.4.1.app \
-            /Applications/Xcode_26.app \
-            /Applications/Xcode.app; do
-            if [ -d "$candidate" ]; then
-              sudo xcode-select -s "$candidate/Contents/Developer"
-              break
-            fi
-          done
-          xcodebuild -version
-          xcrun --show-sdk-version --sdk iphoneos
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-          bundler-cache: true
-
-      - name: Install certificate and provisioning profiles
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
-          BUILD_PROVISION_PROFILE_TUNNEL_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_TUNNEL_BASE64 }}
-        run: |
-          chmod +x scripts/prepare_ios_signing.sh
-          ./scripts/prepare_ios_signing.sh
-
-      - name: Apply bundle id and build number
-        run: |
-          chmod +x scripts/apply_bundle_ids.sh
-          ./scripts/apply_bundle_ids.sh
-
-      - name: Show signing configuration
-        run: |
-          echo "BUILD_NUMBER=${BUILD_NUMBER}"
-          echo "APP_BUNDLE_ID=${APP_BUNDLE_ID}"
-          echo "TUNNEL_BUNDLE_ID=${TUNNEL_BUNDLE_ID}"
-          echo "IOS_TEAM_ID=${IOS_TEAM_ID}"
-          echo "CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}"
-          echo "APP_PROFILE_NAME=${APP_PROFILE_NAME}"
-          echo "TUNNEL_PROFILE_NAME=${TUNNEL_PROFILE_NAME:-<missing>}"
-          xcodebuild -list -project com.vn.sstp.xcodeproj
-
-      - name: Build and upload to TestFlight
-        env:
-          ALTATEC_APPSTORECONNECT_API_KEY: ${{ secrets.ALTATEC_APPSTORECONNECT_API_KEY }}
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: bundle exec fastlane ios beta
-
-      - name: Upload IPA artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sstp-client-ipa
-          path: build/*.ipa
-          if-no-files-found: ignore
-          retention-days: 14
+      - run: echo hello
