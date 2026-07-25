@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - main
-      - 'cursor/**'
+      # Explicit branch (not glob): GitHub Actions intermittently fails to
+      # schedule jobs for cursor/** patterns with empty job lists.
+      - cursor/fix-build-errors-7bd7
   workflow_dispatch:
 
 concurrency:
   group: ios-testflight-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-upload:
