@@ -107,8 +107,9 @@ static void on_fail(void *ctx, const char *message)
     NEIPv4Settings *ipv4 = [[NEIPv4Settings alloc] initWithAddresses:@[local]
                                                          subnetMasks:@[@"255.255.255.255"]];
     ipv4.includedRoutes = @[[NEIPv4Route defaultRoute]];
-    settings.ipv4Settings = ipv4;
-    settings.dnsSettings = [[NEDNSSettings alloc] initWithServers:@[dns1, dns2]];
+    /* Xcode 26 / iOS 26 SDK: acronym properties are capitalized (IPv4/DNS/MTU). */
+    settings.IPv4Settings = ipv4;
+    settings.DNSSettings = [[NEDNSSettings alloc] initWithServers:@[dns1, dns2]];
     settings.MTU = @1400;
 
     __weak typeof(self) weakSelf = self;
