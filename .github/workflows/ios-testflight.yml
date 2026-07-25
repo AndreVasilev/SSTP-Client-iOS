@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-      # Explicit branch (not glob): GitHub Actions intermittently fails to
-      # schedule jobs for cursor/** patterns with empty job lists.
       - cursor/fix-build-errors-7bd7
   workflow_dispatch:
 
@@ -14,8 +12,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Cheap canary: confirms Actions can schedule this workflow at all.
+  # (Recent runs hit GitHub "Internal server error" with zero jobs.)
+  canary:
+    name: Canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: OK
+        run: echo "workflow scheduled on ${{ github.ref_name }} @ ${{ github.sha }}"
+
   build-and-upload:
     name: Build and upload to TestFlight
+    needs: canary
     runs-on: macos-26
     timeout-minutes: 90
 
