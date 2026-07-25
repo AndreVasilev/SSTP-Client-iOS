@@ -26,6 +26,8 @@
 		A11B00012B10000100B00003 /* ios-pppd.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00001 /* ios-pppd.c */; };
 		A11B00012B10000100B00005 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
 		A11B00012B10000100B00006 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
+		A11B00012B10000100B00009 /* sstp-mschapv2.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00008 /* sstp-mschapv2.c */; };
+		A11B00012B10000100B0000A /* sstp-mschapv2.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00008 /* sstp-mschapv2.c */; };
 		7B84C0DA2AA585A700E6B3DD /* tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7B84C0D02AA585A700E6B3DD /* tunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7B84C1022AA5862B00E6B3DD /* sstp-fcs.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0E02AA5862A00E6B3DD /* sstp-fcs.c */; };
 		7B84C1032AA5862B00E6B3DD /* sstp-fcs.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B84C0E02AA5862A00E6B3DD /* sstp-fcs.c */; };
@@ -155,6 +157,8 @@
 		A11B00012B10000100B00001 /* ios-pppd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "ios-pppd.c"; sourceTree = "<group>"; };
 		A11B00012B10000100B00004 /* sstp-ios.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-ios.c"; sourceTree = "<group>"; };
 		A11B00012B10000100B00007 /* sstp-ios.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-ios.h"; sourceTree = "<group>"; };
+		A11B00012B10000100B00008 /* sstp-mschapv2.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-mschapv2.c"; sourceTree = "<group>"; };
+		A11B00012B10000100B0000B /* sstp-mschapv2.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-mschapv2.h"; sourceTree = "<group>"; };
 		7B84C0FA2AA5862B00E6B3DD /* sstp-dump.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-dump.h"; sourceTree = "<group>"; };
 		7B84C0FB2AA5862B00E6B3DD /* sstp-buff.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-buff.h"; sourceTree = "<group>"; };
 		7B84C0FC2AA5862B00E6B3DD /* sstp-http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-http.h"; sourceTree = "<group>"; };
@@ -312,6 +316,8 @@
 				A11B00012B10000100B00001 /* ios-pppd.c */,
 				A11B00012B10000100B00004 /* sstp-ios.c */,
 				A11B00012B10000100B00007 /* sstp-ios.h */,
+				A11B00012B10000100B00008 /* sstp-mschapv2.c */,
+				A11B00012B10000100B0000B /* sstp-mschapv2.h */,
 				7B84C0F42AA5862B00E6B3DD /* sstp-pppd.h */,
 				7B84C0E52AA5862A00E6B3DD /* sstp-private.h */,
 				7B84C0F32AA5862B00E6B3DD /* sstp-route.c */,
@@ -457,6 +463,7 @@
 				7BFC201A2AB89FD400CE1979 /* sstp-log-std.c in Sources */,
 				A11B00012B10000100B00002 /* ios-pppd.c in Sources */,
 				A11B00012B10000100B00005 /* sstp-ios.c in Sources */,
+				A11B00012B10000100B00009 /* sstp-mschapv2.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -487,6 +494,7 @@
 				7B84C1172AA5862B00E6B3DD /* sstp-route.c in Sources */,
 				A11B00012B10000100B00003 /* ios-pppd.c in Sources */,
 				A11B00012B10000100B00006 /* sstp-ios.c in Sources */,
+				A11B00012B10000100B0000A /* sstp-mschapv2.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

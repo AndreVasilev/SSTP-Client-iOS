@@ -1,0 +1,35 @@
+name: Unit Tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'cursor/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Host unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libssl-dev \
+            pkg-config
+
+      - name: Build and run tests
+        working-directory: tests
+        run: make test
