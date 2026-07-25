@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include <openssl/err.h>
+#include <openssl/evp.h>
 #include <openssl/ssl.h>
 
 #include "sstp-client.h"
@@ -367,9 +368,15 @@ int sstp_ios_session_start(sstp_ios_session_t *session,
     memset(client, 0, sizeof(*client));
     opt = &client->option;
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
     SSL_library_init();
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();
+#else
+    OPENSSL_init_ssl(0, NULL);
+    OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_CIPHERS |
+                        OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
+#endif
     sstp_log_init("sstp-ios", SSTP_LOG_INFO, SSTP_OPT_STDERR | SSTP_OPT_LINENO);
 
     opt->server = strdup(server);
