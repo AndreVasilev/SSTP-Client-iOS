@@ -388,7 +388,8 @@ int sstp_ios_session_start(sstp_ios_session_t *session,
         client->url->port = strdup("443");
     }
     if (client->url && !client->url->port) {
-        client->url->port = strdup("443");
+        /* Literal is fine: sstp_url_free only releases url->ptr */
+        client->url->port = (char *)"443";
     }
     opt->host = client->url->host;
 
