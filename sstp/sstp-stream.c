@@ -32,6 +32,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <openssl/ssl.h>
+#include <openssl/x509v3.h>
 
 #include "sstp-private.h"
 
@@ -360,12 +361,22 @@ done:
 }
 
 
+static int sstp_host_is_ip_literal(const char *host)
+{
+    struct in_addr a4;
+    struct in6_addr a6;
+    if (!host || !host[0]) return 0;
+    if (inet_pton(AF_INET, host, &a4) == 1) return 1;
+#ifdef AF_INET6
+    if (inet_pton(AF_INET6, host, &a6) == 1) return 1;
+#endif
+    return 0;
+}
+
 status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
 {
     status_t status = SSTP_FAIL;
-    X509_NAME *name = NULL;
     X509 *peer = NULL;
-    char result[256];
     
     /* Get the peer certificate */
     peer = SSL_get_peer_certificate(ctx->ssl);
@@ -387,24 +398,35 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
         }
     }
 
-    /* Verify the name of the server */
+    /* Verify hostname via SAN (preferred) with CN fallback inside OpenSSL helper */
     if (SSTP_VERIFY_NAME & opts)
     {
-        /* Extract the subject name field */
-        name = X509_get_subject_name(peer);
-        if (!name)
-        {
-            log_err("Could not get subject name");
+        int matched = 0;
+
+        if (!host || !host[0]) {
+            log_info("Certificate name verify skipped: empty host");
             goto done;
         }
 
-        /* Get the common name of the certificate */
-        X509_NAME_get_text_by_NID(name, NID_commonName, 
-                result, sizeof(result));
-        if (strcasecmp(host, result))
-        {
-            log_info("The certificate did not match the host: %s", host);
-            goto done;
+        /* IP-literal servers need an explicit IP SAN / pin / custom CA policy.
+         * X509_check_ip_asc covers iPAddress SANs; DNS mismatch alone is not enough. */
+        if (sstp_host_is_ip_literal(host)) {
+            if (X509_check_ip_asc(peer, host, 0) == 1) {
+                matched = 1;
+            }
+            if (!matched) {
+                log_info("Certificate did not match IP literal host: %s", host);
+                goto done;
+            }
+        } else {
+            /* DNS name: SAN + wildcard per OpenSSL rules; falls back to CN. */
+            if (X509_check_host(peer, host, 0, 0, NULL) == 1) {
+                matched = 1;
+            }
+            if (!matched) {
+                log_info("The certificate did not match the host: %s", host);
+                goto done;
+            }
         }
     }
 
@@ -412,7 +434,9 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
     status = SSTP_OKAY;
 
 done:
-
+    if (peer) {
+        X509_free(peer);
+    }
     return status;
 }
 

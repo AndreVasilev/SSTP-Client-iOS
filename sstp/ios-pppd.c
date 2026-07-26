@@ -483,7 +483,7 @@ static void handle_chap(sstp_pppd_st *ctx, const uint8_t *buf, int len)
             send_ccp_confreq(ctx);
         } else if (code == CHAP_FAILURE) {
             log_err("MSCHAPv2 authentication failed");
-            if (ctx->notify) ctx->notify(ctx->arg, SSTP_PPP_DOWN);
+            if (ctx->notify) ctx->notify(ctx->arg, SSTP_PPP_AUTH_FAIL);
         }
         return;
     }

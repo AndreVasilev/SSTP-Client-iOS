@@ -11,10 +11,13 @@ static NSString * const kKeychainService = @"ru.altatec.sstp-client.vpn";
 @implementation KeychainHelper
 
 + (NSMutableDictionary *)baseQueryForAccount:(NSString *)account {
+    /* Access group comes from the shared keychain-access-groups entitlement
+     * (first entry) so the Packet Tunnel can resolve passwordReference. */
     return [@{
         (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
         (__bridge id)kSecAttrService: kKeychainService,
         (__bridge id)kSecAttrAccount: account,
+        (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
     } mutableCopy];
 }
 
@@ -25,7 +28,6 @@ static NSString * const kKeychainService = @"ru.altatec.sstp-client.vpn";
     SecItemDelete((__bridge CFDictionaryRef)query);
 
     query[(__bridge id)kSecValueData] = data;
-    query[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
 
     OSStatus status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
     if (status != errSecSuccess) {

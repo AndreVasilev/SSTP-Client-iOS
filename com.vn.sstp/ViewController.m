@@ -6,12 +6,16 @@
 #import "ViewController.h"
 #import "VPNManager.h"
 #import "KeychainHelper.h"
+#import "../shared/SSTPShared.h"
 
 static NSString * const kPrefsServer = @"sstp.server";
 static NSString * const kPrefsUsername = @"sstp.username";
 static NSString * const kPasswordAccount = @"sstp-vpn-password";
+static NSString * const kPrefsTLSMode = @"sstp.tlsMode";
+static NSString * const kPrefsCAPEM = @"sstp.caPem";
+static NSString * const kPrefsPin = @"sstp.pinSha256";
 
-@interface ViewController () <UITextFieldDelegate>
+@interface ViewController () <UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, strong) CAGradientLayer *backgroundGradient;
 @property (nonatomic, strong) UILabel *brandLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
@@ -19,6 +23,10 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
 @property (nonatomic, strong) UITextField *serverField;
 @property (nonatomic, strong) UITextField *usernameField;
 @property (nonatomic, strong) UITextField *passwordField;
+@property (nonatomic, strong) UISegmentedControl *tlsModeControl;
+@property (nonatomic, strong) UITextView *caPemView;
+@property (nonatomic, strong) UITextField *pinField;
+@property (nonatomic, strong) UIStackView *advancedStack;
 @property (nonatomic, strong) UIButton *connectButton;
 @property (nonatomic, strong) UILabel *hintLabel;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
@@ -31,6 +39,7 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     [self buildBackground];
     [self buildUI];
     [self loadSavedFields];
+    [self refreshTLSFieldsVisibility];
     [self refreshStatus];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -126,6 +135,39 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     self.usernameField = [self makeField:@"Имя пользователя" secure:NO];
     self.passwordField = [self makeField:@"Пароль" secure:YES];
 
+    self.tlsModeControl = [[UISegmentedControl alloc] initWithItems:@[@"System", @"CA", @"Pin"]];
+    self.tlsModeControl.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tlsModeControl.selectedSegmentIndex = 0;
+    [self.tlsModeControl addTarget:self action:@selector(tlsModeChanged) forControlEvents:UIControlEventValueChanged];
+    if (@available(iOS 13.0, *)) {
+        self.tlsModeControl.selectedSegmentTintColor = [UIColor colorWithRed:0.86 green:0.95 blue:0.92 alpha:1];
+    }
+
+    self.caPemView = [[UITextView alloc] init];
+    self.caPemView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.caPemView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.10];
+    self.caPemView.textColor = UIColor.whiteColor;
+    self.caPemView.font = [UIFont fontWithName:@"Menlo-Regular" size:12] ?: [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
+    self.caPemView.layer.cornerRadius = 14;
+    self.caPemView.clipsToBounds = YES;
+    self.caPemView.delegate = self;
+    self.caPemView.textContainerInset = UIEdgeInsetsMake(10, 10, 10, 10);
+    self.caPemView.accessibilityLabel = @"Custom CA PEM";
+
+    self.pinField = [self makeField:@"SHA-256 pin (64 hex)" secure:NO];
+    self.pinField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+
+    UILabel *advancedTitle = [self makeLabel:@"Доверие TLS"
+                                        font:[UIFont fontWithName:@"AvenirNext-DemiBold" size:13] ?: [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold]
+                                       color:[[UIColor whiteColor] colorWithAlphaComponent:0.65]];
+
+    self.advancedStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        advancedTitle, self.tlsModeControl, self.caPemView, self.pinField
+    ]];
+    self.advancedStack.translatesAutoresizingMaskIntoConstraints = NO;
+    self.advancedStack.axis = UILayoutConstraintAxisVertical;
+    self.advancedStack.spacing = 10;
+
     self.connectButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.connectButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.connectButton.backgroundColor = [UIColor colorWithRed:0.86 green:0.95 blue:0.92 alpha:1];
@@ -134,7 +176,7 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     self.connectButton.layer.cornerRadius = 16;
     [self.connectButton addTarget:self action:@selector(connectTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    self.hintLabel = [self makeLabel:@"Введите сервер, логин и пароль, затем нажмите «Подключить». iOS запросит разрешение на VPN-профиль."
+    self.hintLabel = [self makeLabel:@"Введите сервер, логин и пароль, затем нажмите «Подключить»."
                                font:[UIFont fontWithName:@"AvenirNext-Regular" size:13] ?: [UIFont systemFontOfSize:13]
                               color:[[UIColor whiteColor] colorWithAlphaComponent:0.55]];
     self.hintLabel.textAlignment = NSTextAlignmentCenter;
@@ -145,11 +187,16 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     self.spinner.hidesWhenStopped = YES;
 
     UIStackView *fields = [[UIStackView alloc] initWithArrangedSubviews:@[
-        self.serverField, self.usernameField, self.passwordField
+        self.serverField, self.usernameField, self.passwordField, self.advancedStack
     ]];
     fields.translatesAutoresizingMaskIntoConstraints = NO;
     fields.axis = UILayoutConstraintAxisVertical;
     fields.spacing = 12;
+
+    UIScrollView *scroll = [[UIScrollView alloc] init];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.alwaysBounceVertical = YES;
+    scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
         self.brandLabel,
@@ -167,17 +214,26 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     [stack setCustomSpacing:24 afterView:self.statusLabel];
     [stack setCustomSpacing:20 afterView:fields];
 
-    [self.view addSubview:stack];
+    [self.view addSubview:scroll];
+    [scroll addSubview:stack];
     [self.view addSubview:self.spinner];
 
     UILayoutGuide *guide = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:guide.leadingAnchor constant:24],
-        [stack.trailingAnchor constraintEqualToAnchor:guide.trailingAnchor constant:-24],
-        [stack.centerYAnchor constraintEqualToAnchor:guide.centerYAnchor constant:-24],
+        [scroll.leadingAnchor constraintEqualToAnchor:guide.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:guide.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:guide.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:guide.bottomAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor constant:-24],
+        [stack.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:24],
+        [stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-24],
+        [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-48],
         [self.serverField.heightAnchor constraintEqualToConstant:52],
         [self.usernameField.heightAnchor constraintEqualToConstant:52],
         [self.passwordField.heightAnchor constraintEqualToConstant:52],
+        [self.pinField.heightAnchor constraintEqualToConstant:52],
+        [self.caPemView.heightAnchor constraintEqualToConstant:110],
         [self.connectButton.heightAnchor constraintEqualToConstant:56],
         [self.spinner.centerXAnchor constraintEqualToAnchor:self.connectButton.centerXAnchor],
         [self.spinner.centerYAnchor constraintEqualToAnchor:self.connectButton.centerYAnchor],
@@ -187,11 +243,40 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     [self.view addGestureRecognizer:tap];
 }
 
+- (NSString *)selectedTLSMode {
+    switch (self.tlsModeControl.selectedSegmentIndex) {
+        case 1: return @"custom_ca";
+        case 2: return @"pinned";
+        default: return @"system";
+    }
+}
+
+- (void)tlsModeChanged {
+    [self refreshTLSFieldsVisibility];
+}
+
+- (void)refreshTLSFieldsVisibility {
+    NSString *mode = [self selectedTLSMode];
+    self.caPemView.hidden = ![mode isEqualToString:@"custom_ca"];
+    self.pinField.hidden = ![mode isEqualToString:@"pinned"];
+}
+
 - (void)loadSavedFields {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     self.serverField.text = [defaults stringForKey:kPrefsServer];
     self.usernameField.text = [defaults stringForKey:kPrefsUsername];
     self.passwordField.text = [KeychainHelper passwordForAccount:kPasswordAccount error:nil];
+    self.caPemView.text = [defaults stringForKey:kPrefsCAPEM] ?: @"";
+    self.pinField.text = [defaults stringForKey:kPrefsPin] ?: @"";
+
+    NSString *mode = [defaults stringForKey:kPrefsTLSMode] ?: @"system";
+    if ([mode isEqualToString:@"custom_ca"]) {
+        self.tlsModeControl.selectedSegmentIndex = 1;
+    } else if ([mode isEqualToString:@"pinned"]) {
+        self.tlsModeControl.selectedSegmentIndex = 2;
+    } else {
+        self.tlsModeControl.selectedSegmentIndex = 0;
+    }
 }
 
 - (void)endEditing {
@@ -214,9 +299,29 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
     [self.spinner startAnimating];
     self.hintLabel.text = @"Сохраняем VPN-профиль…";
 
+    NSString *tlsMode = [self selectedTLSMode];
+    NSString *caPem = self.caPemView.text;
+    NSString *pin = [[self.pinField.text ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] lowercaseString];
+
+    if ([tlsMode isEqualToString:@"custom_ca"] && caPem.length < 32) {
+        [self.spinner stopAnimating];
+        self.connectButton.enabled = YES;
+        self.hintLabel.text = @"Для режима CA вставьте PEM сертификата удостоверяющего центра.";
+        return;
+    }
+    if ([tlsMode isEqualToString:@"pinned"] && pin.length != 64) {
+        [self.spinner stopAnimating];
+        self.connectButton.enabled = YES;
+        self.hintLabel.text = @"Для режима Pin укажите SHA-256 отпечаток листа (64 hex-символа).";
+        return;
+    }
+
     [[VPNManager sharedManager] saveConfigurationWithServer:self.serverField.text
                                                    username:self.usernameField.text
                                                    password:self.passwordField.text
+                                                    tlsMode:tlsMode
+                                                      caPem:caPem
+                                                  pinSha256:pin
                                                  completion:^(NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (error) {
@@ -235,7 +340,7 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
                     if (connectError) {
                         self.hintLabel.text = connectError.localizedDescription;
                     } else {
-                        self.hintLabel.text = @"Если iOS спросит разрешение — подтвердите добавление VPN.";
+                        self.hintLabel.text = @"Ожидаем установку SSTP-сессии…";
                     }
                     [self refreshStatus];
                 });
@@ -261,6 +366,16 @@ static NSString * const kPasswordAccount = @"sstp-vpn-password";
 
     if (vpn.isConnected) {
         self.hintLabel.text = @"VPN активен. Трафик идёт через SSTP-профиль.";
+    } else if (vpn.status == NEVPNStatusDisconnected && vpn.lastErrorCode.length > 0 &&
+               ![vpn.lastErrorCode isEqualToString:@"cancelled"]) {
+        NSString *hint = vpn.lastErrorHint ?: @"Не удалось подключить VPN.";
+        if (vpn.lastErrorMessage.length > 0) {
+            self.hintLabel.text = [NSString stringWithFormat:@"%@\n%@", hint, vpn.lastErrorMessage];
+        } else {
+            self.hintLabel.text = hint;
+        }
+    } else if (vpn.isConnecting) {
+        self.hintLabel.text = [NSString stringWithFormat:@"Этап: %@", SSTPLocalizedStage(vpn.stage)];
     }
 }
 

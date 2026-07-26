@@ -26,6 +26,8 @@
 		A11B00012B10000100B00003 /* ios-pppd.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00001 /* ios-pppd.c */; };
 		A11B00012B10000100B00005 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
 		A11B00012B10000100B00006 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
+		A11B00012B10000100B0000E /* sstp-ios-error.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B0000D /* sstp-ios-error.c */; };
+		A11B00012B10000100B0000F /* sstp-ios-error.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B0000D /* sstp-ios-error.c */; };
 		A11B00012B10000100B00009 /* sstp-mschapv2.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00008 /* sstp-mschapv2.c */; };
 		A11B00012B10000100B0000A /* sstp-mschapv2.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00008 /* sstp-mschapv2.c */; };
 		7B84C0DA2AA585A700E6B3DD /* tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7B84C0D02AA585A700E6B3DD /* tunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -73,6 +75,7 @@
 		7BFC201B2AB89FD400CE1979 /* sstp-log-std.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BFC20142AB89FD400CE1979 /* sstp-log-std.c */; };
 		7BFC201C2AB89FD400CE1979 /* sstp-log-file.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BFC20152AB89FD400CE1979 /* sstp-log-file.c */; };
 		7BFC201D2AB89FD400CE1979 /* sstp-log-file.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BFC20152AB89FD400CE1979 /* sstp-log-file.c */; };
+		A11C00012B20000100C00002 /* cacert.pem in Resources */ = {isa = PBXBuildFile; fileRef = A11C00012B20000100C00001 /* cacert.pem */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +131,9 @@
 		7B84C0D42AA585A700E6B3DD /* PacketTunnelProvider.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PacketTunnelProvider.m; sourceTree = "<group>"; };
 		7B84C0D62AA585A700E6B3DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7B84C0D72AA585A700E6B3DD /* tunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = tunnel.entitlements; sourceTree = "<group>"; };
+		A11C00012B20000100C00001 /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; path = cacert.pem; sourceTree = "<group>"; };
+		A11B00012B10000100B0000C /* sstp-ios-error.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-ios-error.h"; sourceTree = "<group>"; };
+		A11B00012B10000100B0000D /* sstp-ios-error.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-ios-error.c"; sourceTree = "<group>"; };
 		7B84C0E02AA5862A00E6B3DD /* sstp-fcs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-fcs.c"; sourceTree = "<group>"; };
 		7B84C0E12AA5862A00E6B3DD /* sstp-option.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-option.c"; sourceTree = "<group>"; };
 		7B84C0E22AA5862A00E6B3DD /* sstp-stream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-stream.c"; sourceTree = "<group>"; };
@@ -271,6 +277,7 @@
 			children = (
 				7B84C0D32AA585A700E6B3DD /* PacketTunnelProvider.h */,
 				7B84C0D42AA585A700E6B3DD /* PacketTunnelProvider.m */,
+				A11C00012B20000100C00001 /* cacert.pem */,
 				7B84C0D62AA585A700E6B3DD /* Info.plist */,
 				7B84C0D72AA585A700E6B3DD /* tunnel.entitlements */,
 			);
@@ -316,6 +323,8 @@
 				A11B00012B10000100B00001 /* ios-pppd.c */,
 				A11B00012B10000100B00004 /* sstp-ios.c */,
 				A11B00012B10000100B00007 /* sstp-ios.h */,
+				A11B00012B10000100B0000C /* sstp-ios-error.h */,
+				A11B00012B10000100B0000D /* sstp-ios-error.c */,
 				A11B00012B10000100B00008 /* sstp-mschapv2.c */,
 				A11B00012B10000100B0000B /* sstp-mschapv2.h */,
 				7B84C0F42AA5862B00E6B3DD /* sstp-pppd.h */,
@@ -424,6 +433,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A11C00012B20000100C00002 /* cacert.pem in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -463,6 +473,7 @@
 				7BFC201A2AB89FD400CE1979 /* sstp-log-std.c in Sources */,
 				A11B00012B10000100B00002 /* ios-pppd.c in Sources */,
 				A11B00012B10000100B00005 /* sstp-ios.c in Sources */,
+				A11B00012B10000100B0000E /* sstp-ios-error.c in Sources */,
 				A11B00012B10000100B00009 /* sstp-mschapv2.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -494,6 +505,7 @@
 				7B84C1172AA5862B00E6B3DD /* sstp-route.c in Sources */,
 				A11B00012B10000100B00003 /* ios-pppd.c in Sources */,
 				A11B00012B10000100B00006 /* sstp-ios.c in Sources */,
+				A11B00012B10000100B0000F /* sstp-ios-error.c in Sources */,
 				A11B00012B10000100B0000A /* sstp-mschapv2.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

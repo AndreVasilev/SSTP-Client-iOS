@@ -9,7 +9,9 @@ Extension target `tunnel` — runtime, где живёт SSTP-сессия и pa
 | `tunnel/PacketTunnelProvider.m` | Entry point NEPacketTunnelProvider |
 | `tunnel/PacketTunnelProvider.h` | Интерфейс |
 | `tunnel/Info.plist` | Extension point + principal class |
-| `tunnel/tunnel.entitlements` | packet-tunnel entitlement |
+| `tunnel/tunnel.entitlements` | packet-tunnel + App Group + keychain-access-groups |
+| `tunnel/cacert.pem` | Bundled Mozilla CA roots for OpenSSL verify |
+| `shared/SSTPShared.h` | Общие константы app ↔ extension |
 
 Principal class: `PacketTunnelProvider`  
 NSExtensionPointIdentifier: `com.apple.networkextension.packet-tunnel`
@@ -27,44 +29,44 @@ NSExtensionPointIdentifier: `com.apple.networkextension.packet-tunnel`
 |------|----------|
 | server | `options[@"server"]` → иначе `protocolConfiguration.serverAddress` |
 | username | `options[@"username"]` → иначе `protocolConfiguration.username` |
-| password | `options[@"password"]` |
+| password | `options[@"password"]` → иначе dereference `passwordReference` |
+| tlsMode / caPem / pinSha256 | options → иначе `providerConfiguration` |
 
-Если password пустой, код **не** читает `passwordReference` (есть комментарий, что пароль должен прийти из app start options).
-
-При отсутствии server/username/password → ошибка domain `ru.altatec.sstp`, code `1`.
+При отсутствии server/username/password → `missing_credentials` (domain `ru.altatec.sstp`).
 
 ### Worker thread
 
 Сессия SSTP блокирует libevent loop, поэтому:
 
-1. `sstp_ios_session_create(on_ready, on_packet, on_fail, self)`
+1. `sstp_ios_session_create(on_ready, on_packet, on_stage, on_fail, self)`
 2. На фоневом `NSThread`:
-   - `sstp_ios_session_start(...)`
+   - `sstp_ios_session_start_ex(...)`
    - `sstp_ios_session_run(...)`
+
+Stop ждёт worker с timeout **5s**, затем `session_free`.  
+Callbacks после teardown игнорируются через `sessionGeneration`.
+
+## Errors / status channel
+
+- C fail → `NSError` domain `ru.altatec.sstp` + `userInfo` keys `code` / `stage` / `NSLocalizedDescriptionKey`
+- Last error пишется в App Group (`group.<appBundleId>`) перед cancel
+- `handleAppMessage` / `get_status` → JSON `{ stage, connected, lastError, reconnectAttempt }`
+
+## Reconnect
+
+Transient codes (`dns_resolve`, `tcp_timeout`, `tls_handshake`, `network_lost`, …): до **3** попыток, backoff 1s / 2s / 5s.  
+Fatal (`auth_rejected`, `tls_cert`, `missing_credentials`, `cancelled`, `crypto_binding`) — без retry.  
+User stop → `cancelled`, reconnect отключён.
 
 ## Callbacks → NE
 
+### `on_stage`
+
+Обновляет текущую стадию и App Group.
+
 ### `on_ready`
 
-Получает `local_ip`, `gateway_ip`, `dns1`, `dns2` и вызывает:
-
-`applyTunnelSettingsWithLocalIP:gateway:dns1:dns2:`
-
-Настройки:
-
-- `NEPacketTunnelNetworkSettings` с remote address = gateway
-- IPv4 address = local, mask `255.255.255.255`
-- `includedRoutes = defaultRoute`
-- DNS servers
-- `MTU = 1400`
-
-После успешного `setTunnelNetworkSettings` → `startPacketLoop` и completionHandler(nil).
-
-Fallbacks, если C-слой вернул NULL:
-
-- local `10.0.0.2`
-- gateway `10.0.0.1`
-- DNS `8.8.8.8` / `8.8.4.4`
+`applyTunnelSettings…` → IPv4 default route, DNS, MTU 1400 → `startPacketLoop` → start completion(nil).
 
 ### `on_packet`
 
@@ -72,11 +74,9 @@ Fallbacks, если C-слой вернул NULL:
 
 ### `on_fail`
 
-Завершает pending start handler ошибкой и `cancelTunnelWithError` (domain `ru.altatec.sstp`, code `2`).
+Structured `(code, stage, message)` → reconnect policy или `cancelTunnelWithError`.
 
 ## Packet loop
-
-`startPacketLoop`:
 
 ```text
 readPacketsWithCompletionHandler
@@ -85,28 +85,14 @@ readPacketsWithCompletionHandler
   → recurse while packetLoopRunning
 ```
 
-Замечание: входящие из SSTP пишутся как `AF_INET`; исходящие AF_INET6 тоже прокидываются в C API, но туннельные settings сейчас IPv4-only.
-
-## Stop tunnel
-
-```objc
-- (void)stopTunnelWithReason:(NEProviderStopReason)reason
-           completionHandler:(void (^)(void))completionHandler
-```
-
-1. `packetLoopRunning = NO`
-2. `sstp_ios_session_stop`
-3. дождаться завершения worker thread
-4. `sstp_ios_session_free`
-5. completionHandler()
-
 ## Где править
 
 | Задача | Место |
 |--------|-------|
 | MTU / routes / DNS defaults | `applyTunnelSettings...` |
-| Передача credentials / Keychain ref | `startTunnelWithOptions` |
+| Credentials / Keychain ref / TLS config | `startTunnelWithOptions` |
+| Reconnect policy | `handleSessionFailureWithCode…` |
+| App messages / App Group | `handleAppMessage`, `persistStatus` |
 | Threading / lifecycle session | start/stop методы |
-| Mapping IP packets | `startPacketLoop`, `on_packet` |
 
-Сам протокол SSTP/PPP не здесь — см. [sstp-engine.md](sstp-engine.md).
+Сам протокол SSTP/PPP — см. [sstp-engine.md](sstp-engine.md).
