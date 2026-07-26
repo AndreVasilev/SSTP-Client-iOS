@@ -38,6 +38,7 @@ typedef enum
     SSTP_PPP_UP   = 2,
     SSTP_PPP_AUTH = 3,
     SSTP_PPP_START= 4,
+    SSTP_PPP_AUTH_FAIL = 5,
 
 } sstp_pppd_event_t;
 

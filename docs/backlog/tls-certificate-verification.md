@@ -1,5 +1,9 @@
 # Backlog: TLS certificate verification
 
+## Status: DONE
+
+Реализовано: `SSL_VERIFY_PEER` + bundled CA, SAN/hostname via OpenSSL helpers, custom CA / pin UI+config, `tls_cert` fatal в PQ channel, insecure_debug compile-gated, docs/tests.
+
 ## Summary
 
 Сейчас TLS-проверка сертификата сервера фактически отключена. Для VPN это неприемлемо: нужен обязательный verify по умолчанию и опциональный путь для self-signed (pin / trust UI).

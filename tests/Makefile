@@ -16,7 +16,8 @@ HOST_OBJS := $(addprefix $(BUILD)/,$(HOST_SRCS:.c=.o))
 
 .PHONY: all test clean
 
-all: $(BUILD)/test_mschapv2 $(BUILD)/test_fcs $(BUILD)/test_buff $(BUILD)/test_url
+all: $(BUILD)/test_mschapv2 $(BUILD)/test_fcs $(BUILD)/test_buff $(BUILD)/test_url \
+	$(BUILD)/test_ios_error $(BUILD)/test_cert_host
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -41,9 +42,15 @@ $(BUILD)/test_buff: test_buff.c $(BUILD)/sstp-buff.o
 $(BUILD)/test_url: test_url.c $(BUILD)/sstp-util.o
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ test_url.c $(BUILD)/sstp-util.o $(LDFLAGS)
 
+$(BUILD)/test_ios_error: test_ios_error.c $(SSTP)/sstp-ios-error.c | $(BUILD)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ test_ios_error.c $(SSTP)/sstp-ios-error.c $(LDFLAGS)
+
+$(BUILD)/test_cert_host: test_cert_host.c | $(BUILD)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ test_cert_host.c $(LDFLAGS) $(LDLIBS_CRYPTO)
+
 test: all
 	@fail=0; \
-	for t in test_mschapv2 test_fcs test_buff test_url; do \
+	for t in test_mschapv2 test_fcs test_buff test_url test_ios_error test_cert_host; do \
 	  echo "==> $$t"; \
 	  $(BUILD)/$$t || fail=1; \
 	done; \

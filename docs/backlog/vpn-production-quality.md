@@ -1,3 +1,7 @@
+## Status: DONE
+
+Реализовано: контракт stage/code, C fail path, extension last error + `handleAppMessage`, passwordReference, stop timeout, UI sync, transient reconnect, host tests, docs.
+
 ## Summary
 
 Довести VPN-клиент до production-качества: предсказуемые ошибки, корректный disconnect, синхронизация UI ↔ VPN, базовый reconnect для transient-сбоев.

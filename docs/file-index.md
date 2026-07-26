@@ -13,7 +13,8 @@
 | `com.vn.sstp/AppDelegate.m` | App lifecycle + шаблонный Core Data |
 | `com.vn.sstp/SceneDelegate.m` | Scene lifecycle |
 | `com.vn.sstp/Info.plist` | Display name, scene manifest |
-| `com.vn.sstp/com.vn.sstp.entitlements` | App Network Extension entitlement |
+| `com.vn.sstp/com.vn.sstp.entitlements` | NE + App Group + keychain-access-groups |
+| `shared/SSTPShared.h` | App ↔ tunnel constants / error UI helpers |
 | `com.vn.sstp/Base.lproj/Main.storyboard` | Root scene → ViewController |
 | `com.vn.sstp/Base.lproj/LaunchScreen.storyboard` | Launch screen |
 | `com.vn.sstp/Assets.xcassets/AppIcon.appiconset/` | App icons |
@@ -22,17 +23,20 @@
 
 | Файл | Назначение |
 |------|------------|
-| `tunnel/PacketTunnelProvider.m` | NE entry: start/stop, settings, packet loop |
+| `tunnel/PacketTunnelProvider.m` | NE entry: start/stop, settings, reconnect, status IPC |
 | `tunnel/PacketTunnelProvider.h` | Provider interface |
 | `tunnel/Info.plist` | Extension point + principal class |
-| `tunnel/tunnel.entitlements` | Tunnel Network Extension entitlement |
+| `tunnel/tunnel.entitlements` | NE + App Group + keychain-access-groups |
+| `tunnel/cacert.pem` | Bundled CA roots for OpenSSL verify |
 
 ## SSTP engine
 
 | Файл | Назначение |
 |------|------------|
 | `sstp/sstp-ios.h` | Публичный C API iOS-сессии |
-| `sstp/sstp-ios.c` | Lifecycle сессии, TLS connect, event-loop glue |
+| `sstp/sstp-ios-error.h` | Стабильные stage/error codes |
+| `sstp/sstp-ios-error.c` | Fatal/valid helpers for codes/stages |
+| `sstp/sstp-ios.c` | Lifecycle сессии, TLS trust, stages, event-loop glue |
 | `sstp/ios-pppd.c` | In-process PPP/MSCHAPv2/IPCP/MPPE |
 | `sstp/sstp-mschapv2.c` | MSCHAPv2 / MPPE crypto helpers |
 | `sstp/sstp-mschapv2.h` | Headers helpers |
@@ -75,6 +79,8 @@
 | `tests/test_fcs.c` | FCS roundtrip |
 | `tests/test_buff.c` | Buffer helper tests |
 | `tests/test_url.c` | URL parser tests |
+| `tests/test_ios_error.c` | Error/stage contract mapping |
+| `tests/test_cert_host.c` | SAN/wildcard/CN hostname helpers |
 | `tests/stubs/` | Stub headers for host builds |
 
 ## Docs

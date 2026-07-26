@@ -4,51 +4,65 @@
 
 ## Публичный API для iOS
 
-Файл: `sstp/sstp-ios.h`
+Файлы: `sstp/sstp-ios.h`, `sstp/sstp-ios-error.h`
 
 ```c
-typedef struct sstp_ios_session sstp_ios_session_t;
+typedef void (*sstp_ios_ready_fn)(...);
+typedef void (*sstp_ios_packet_fn)(...);
+typedef void (*sstp_ios_stage_fn)(void *ctx, const char *stage);
+typedef void (*sstp_ios_fail_fn)(void *ctx, const char *code,
+                                 const char *stage, const char *message);
 
-typedef void (*sstp_ios_ready_fn)(void *ctx,
-                                  const char *local_ip,
-                                  const char *gateway_ip,
-                                  const char *dns1,
-                                  const char *dns2);
-typedef void (*sstp_ios_packet_fn)(void *ctx, const uint8_t *ip_packet, size_t len);
-typedef void (*sstp_ios_fail_fn)(void *ctx, const char *message);
-
-sstp_ios_session_t *sstp_ios_session_create(...);
+sstp_ios_session_t *sstp_ios_session_create(on_ready, on_packet, on_stage, on_fail, ctx);
 int  sstp_ios_session_start(session, server, username, password);
+int  sstp_ios_session_start_ex(session, const sstp_ios_start_params_t *params);
 int  sstp_ios_session_write_ip(session, ip_packet, len);
 void sstp_ios_session_run(session);    // блокирует на event loop
 void sstp_ios_session_stop(session);
 void sstp_ios_session_free(session);
 ```
 
-Реализация: `sstp/sstp-ios.c`.
+`sstp_ios_start_params_t` добавляет TLS trust:
+
+| Поле | Назначение |
+|------|------------|
+| `tls_mode` | `SYSTEM` / `CUSTOM_CA` / `PINNED` / `INSECURE_DEBUG` (только Debug) |
+| `ca_pem` / `ca_pem_len` | PEM для custom CA |
+| `pin_sha256_hex` | SHA-256 fingerprint листа (64 hex) |
+
+Стабильные коды/стадии — в `sstp-ios-error.h` (`dns_resolve`, `tls_cert`, `auth_rejected`, …).  
+`sstp_ios_error_is_fatal(code)` определяет, можно ли auto-reconnect.
+
+Реализация: `sstp/sstp-ios.c`, хелперы контракта — `sstp/sstp-ios-error.c`.
 
 ## Lifecycle сессии
 
 ```text
 create
-  → start
+  → start_ex
        OpenSSL init
-       options: NOLAUNCH | NOPLUGIN | CERTWARN | NODAEMON | TLSEXT
+       options: NOLAUNCH | NOPLUGIN | NODAEMON | TLSEXT
+                (+ CERTWARN только для INSECURE_DEBUG)
+       TLS: SSL_VERIFY_PEER + system/bundled CA / custom CA / pin
        URL: https://<server>/  (port default 443)
+       stages: resolving → tcp_tls → http_upgrade → sstp_control
+               → ppp_* → applying_settings
        event_base + socketpairs (inject IP, stop)
        sstp_stream_create / connect (timeout 60)
   → run  (event_base_dispatch)
        TLS connected
        → HTTP SSTP handshake (sstp-http)
+       → sstp_verify_cert(CERT|NAME) — fail → tls_cert (abort)
        → SSTP state machine (sstp-state)
        → CALL_CONNECT
             sstp_pppd_create/start  (реализация = ios-pppd.c)
             LCP → MSCHAPv2 → IPCP → CCP/MPPE
        → PPP AUTH: derive MPPE keys → sstp_state_mppe_keys
+       → PPP AUTH_FAIL → auth_rejected (fatal)
        → PPP UP: sstp_state_accept (crypto binding) → on_ready
        → data path: SSTP data ↔ PPP ↔ IP callbacks
   → stop / fail → loopbreak
-  → free resources
+  → free resources (password memory scrubbed)
 ```
 
 Cross-thread IP injection: `write_ip` пишет в socketpair; callback в libevent thread вызывает `sstp_pppd_send_ip`.
@@ -66,6 +80,8 @@ Cross-thread IP injection: `write_ip` пишет в socketpair; callback в libe
 - `sstp_pppd_send` / `sstp_pppd_send_ip`
 - `sstp_pppd_getchap` / `sstp_pppd_get_ipv4`
 - `sstp_pppd_set_mppe_keys` / `sstp_pppd_set_ip_handler`
+
+PPP events: `SSTP_PPP_DOWN`, `UP`, `AUTH`, `START`, `AUTH_FAIL`.
 
 ### PPP phases в ios-pppd
 
@@ -92,7 +108,7 @@ MRU: `1400`.
 
 | Модуль | Назначение |
 |--------|------------|
-| `sstp-stream.c` | TCP/TLS stream на OpenSSL + libevent |
+| `sstp-stream.c` | TCP/TLS stream на OpenSSL + libevent; hostname via `X509_check_host` / `X509_check_ip_asc` |
 | `sstp-http.c` | HTTP upgrade / SSTP handshake |
 | `sstp-packet.c` | Framing control/data packets |
 | `sstp-state.c` | Control state machine, crypto binding |
@@ -106,13 +122,19 @@ MRU: `1400`.
 | `sstp-log*.c` | Логирование |
 | `config.h` | iOS feature flags (`SSTP_IOS`, без ppp plugin/netlink/pty) |
 
-## TLS notes (текущее поведение)
+## TLS trust policy
 
-В `sstp-ios.c`:
+В `sstp-ios.c` / `sstp-stream.c`:
 
-- `SSLv23_client_method()`, отключены SSLv2/SSLv3/compression
-- `SSL_VERIFY_NONE`
-- включён `SSTP_OPT_CERTWARN` — проблемы сертификата логируются, соединение может продолжаться
+| Mode | Поведение |
+|------|-----------|
+| `SYSTEM` (default) | `SSL_VERIFY_PEER`, bundled `cacert.pem` / system paths, chain + hostname |
+| `CUSTOM_CA` | PEM из params → `X509_STORE_add_cert` |
+| `PINNED` | SHA-256 pin листа; mismatch → `tls_cert` |
+| `INSECURE_DEBUG` | Только Debug; `SSL_VERIFY_NONE` + `CERTWARN` |
+
+На fail verify: abort с `tls_cert`, **без** continue.  
+CA bundle для NE: `tunnel/cacert.pem` (путь через `SSTP_CA_BUNDLE`).
 
 ## config.h
 
@@ -128,13 +150,15 @@ MRU: `1400`.
 | Задача | Файлы |
 |--------|-------|
 | Публичный session API / connect options | `sstp-ios.h`, `sstp-ios.c` |
+| Error/stage contract | `sstp-ios-error.h`, `sstp-ios-error.c` |
 | PPP negotiation / MPPE | `ios-pppd.c` |
 | MSCHAPv2 math | `sstp-mschapv2.c` |
 | SSTP control messages / binding | `sstp-state.c`, `sstp-packet.c`, `sstp-cmac.c` |
-| TLS/stream | `sstp-stream.c`, куски `sstp-ios.c` |
+| TLS/stream / hostname | `sstp-stream.c`, куски `sstp-ios.c` |
 | HTTP handshake | `sstp-http.c` |
 
 ## Связанные документы
 
 - Tunnel bridge → [tunnel-layer.md](tunnel-layer.md)
 - Тесты → [build-test-ci.md](build-test-ci.md)
+- Backlog (выполнено) → [backlog/vpn-production-quality.md](backlog/vpn-production-quality.md), [backlog/tls-certificate-verification.md](backlog/tls-certificate-verification.md)
