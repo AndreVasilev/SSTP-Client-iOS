@@ -91,3 +91,4 @@
 | `docs/build-test-ci.md` | Сборка и CI |
 | `docs/agent-playbook.md` | Куда править / ловушки |
 | `docs/file-index.md` | Этот файл |
+| `docs/backlog/vpn-production-quality.md` | План доработок production-качества VPN |
