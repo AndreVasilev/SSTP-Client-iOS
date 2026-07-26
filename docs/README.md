@@ -17,6 +17,8 @@
 | 7 | [build-test-ci.md](build-test-ci.md) | Сборка, тесты, CI, Fastlane |
 | 8 | [agent-playbook.md](agent-playbook.md) | Куда править, типичные сценарии, ловушки |
 | — | [file-index.md](file-index.md) | Короткий индекс ключевых файлов |
+| — | [backlog/vpn-production-quality.md](backlog/vpn-production-quality.md) | План: ошибки, disconnect, UI sync, reconnect |
+| — | [backlog/tls-certificate-verification.md](backlog/tls-certificate-verification.md) | План: TLS verify / CA / pin / trust UI |
 
 ## Быстрые якоря
 
