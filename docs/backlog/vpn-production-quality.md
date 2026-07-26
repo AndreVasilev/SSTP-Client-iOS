@@ -219,5 +219,6 @@ internal
 
 - App Group id / team prefix для shared last error?
 - Нужен ли user-visible detailed log screen или только hint/status?
-- Cert policy: leave-as-warn (`SSTP_OPT_CERTWARN`) или fatal `tls_cert`? Влияет на fatal/transient.
+- Cert policy: leave-as-warn (`SSTP_OPT_CERTWARN`) или fatal `tls_cert`? Влияет на fatal/transient.  
+  Вынесено в отдельный backlog: [tls-certificate-verification.md](tls-certificate-verification.md) (strict verify by default + CA/pin).
 - Max reconnect attempts / backoff — выбрать дефолты до реализации Phase 4.
