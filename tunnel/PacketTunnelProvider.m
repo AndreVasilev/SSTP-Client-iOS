@@ -98,26 +98,13 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
 #pragma mark - Status persistence / messaging
 
 - (void)persistStatus {
-    NSUserDefaults *defaults = SSTPSharedDefaults();
-    if (!defaults) return;
-    [defaults setObject:self.currentStage ?: @(SSTP_IOS_STAGE_IDLE) forKey:SSTPAppGroupLastStageKey];
-    [defaults setBool:self.packetLoopRunning forKey:SSTPAppGroupConnectedKey];
-    if (self.lastErrorCode.length > 0) {
-        [defaults setObject:self.lastErrorCode forKey:SSTPAppGroupLastErrorCodeKey];
-        [defaults setObject:self.currentStage ?: @(SSTP_IOS_STAGE_ERROR) forKey:SSTPAppGroupLastErrorStageKey];
-        [defaults setObject:self.lastErrorMessage ?: @"" forKey:SSTPAppGroupLastErrorMessageKey];
-    }
-    [defaults synchronize];
+    /* Status is exposed to the app via handleAppMessage / get_status.
+     * App Groups are not enabled in current provisioning profiles. */
 }
 
 - (void)clearPersistedError {
     self.lastErrorCode = nil;
     self.lastErrorMessage = nil;
-    NSUserDefaults *defaults = SSTPSharedDefaults();
-    [defaults removeObjectForKey:SSTPAppGroupLastErrorCodeKey];
-    [defaults removeObjectForKey:SSTPAppGroupLastErrorStageKey];
-    [defaults removeObjectForKey:SSTPAppGroupLastErrorMessageKey];
-    [defaults synchronize];
 }
 
 - (NSDictionary *)statusDictionary {

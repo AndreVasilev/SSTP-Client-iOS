@@ -29,7 +29,7 @@
 
 2. **Пароль: options и/или passwordReference**  
    Extension читает `options[@"password"]`, иначе разыменовывает `passwordReference`.  
-   App Group + keychain-access-groups должны совпадать у app и tunnel.
+   Не добавляй App Groups / лишние entitlements без обновления provisioning profiles — CI App Store profiles сейчас содержат только NE.
 
 3. **Не возвращай `sstp-pppd.c` в Sources для iOS**  
    На устройстве нет внешнего pppd. Используется `ios-pppd.c`.

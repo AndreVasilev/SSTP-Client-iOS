@@ -7,24 +7,18 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-static inline NSString *SSTPAppGroupIdentifier(void) {
-    NSString *bundleId = [NSBundle mainBundle].bundleIdentifier ?: @"cen.com-vn-sstp";
-    if ([bundleId hasSuffix:@".tunnel"]) {
-        bundleId = [bundleId substringToIndex:bundleId.length - @".tunnel".length];
-    }
-    return [@"group." stringByAppendingString:bundleId];
-}
-
 static NSString * const SSTPErrorDomain = @"ru.altatec.sstp";
 
 static NSString * const SSTPUserInfoCodeKey = @"code";
 static NSString * const SSTPUserInfoStageKey = @"stage";
 
-static NSString * const SSTPAppGroupLastErrorCodeKey = @"lastErrorCode";
-static NSString * const SSTPAppGroupLastErrorStageKey = @"lastErrorStage";
-static NSString * const SSTPAppGroupLastErrorMessageKey = @"lastErrorMessage";
-static NSString * const SSTPAppGroupLastStageKey = @"lastStage";
-static NSString * const SSTPAppGroupConnectedKey = @"connected";
+/* App-local cache keys (populated from handleAppMessage polls).
+ * App Groups are intentionally not required: current App Store profiles
+ * do not include the application-groups entitlement. */
+static NSString * const SSTPCachedLastErrorCodeKey = @"sstp.lastErrorCode";
+static NSString * const SSTPCachedLastErrorStageKey = @"sstp.lastErrorStage";
+static NSString * const SSTPCachedLastErrorMessageKey = @"sstp.lastErrorMessage";
+static NSString * const SSTPCachedLastStageKey = @"sstp.lastStage";
 
 static NSString * const SSTPMsgActionKey = @"action";
 static NSString * const SSTPMsgActionGetStatus = @"get_status";
@@ -40,8 +34,8 @@ typedef NS_ENUM(NSInteger, SSTPErrorNumericCode) {
     SSTPErrorNumericInternal = 99,
 };
 
-static inline NSUserDefaults * _Nullable SSTPSharedDefaults(void) {
-    return [[NSUserDefaults alloc] initWithSuiteName:SSTPAppGroupIdentifier()];
+static inline NSUserDefaults *SSTPAppDefaults(void) {
+    return NSUserDefaults.standardUserDefaults;
 }
 
 static inline NSError *SSTPMakeError(NSString *code, NSString *stage, NSString *message) {

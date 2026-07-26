@@ -9,7 +9,7 @@ Extension target `tunnel` — runtime, где живёт SSTP-сессия и pa
 | `tunnel/PacketTunnelProvider.m` | Entry point NEPacketTunnelProvider |
 | `tunnel/PacketTunnelProvider.h` | Интерфейс |
 | `tunnel/Info.plist` | Extension point + principal class |
-| `tunnel/tunnel.entitlements` | packet-tunnel + App Group + keychain-access-groups |
+| `tunnel/tunnel.entitlements` | packet-tunnel-provider |
 | `tunnel/cacert.pem` | Bundled Mozilla CA roots for OpenSSL verify |
 | `shared/SSTPShared.h` | Общие константы app ↔ extension |
 
@@ -49,8 +49,8 @@ Callbacks после teardown игнорируются через `sessionGenera
 ## Errors / status channel
 
 - C fail → `NSError` domain `ru.altatec.sstp` + `userInfo` keys `code` / `stage` / `NSLocalizedDescriptionKey`
-- Last error пишется в App Group (`group.<appBundleId>`) перед cancel
 - `handleAppMessage` / `get_status` → JSON `{ stage, connected, lastError, reconnectAttempt }`
+- App Groups не используются (текущие App Store profiles без `application-groups`); app поллит `get_status` во время Connecting
 
 ## Reconnect
 

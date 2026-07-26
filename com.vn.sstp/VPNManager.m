@@ -22,6 +22,7 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
 @property (nonatomic, copy, nullable) NSString *lastErrorCode;
 @property (nonatomic, copy, nullable) NSString *lastErrorMessage;
 @property (nonatomic, assign) BOOL connectRequested;
+@property (nonatomic, strong, nullable) NSTimer *statusPollTimer;
 @end
 
 @implementation VPNManager
@@ -48,6 +49,7 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
 }
 
 - (void)dealloc {
+    [self stopStatusPolling];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
@@ -99,11 +101,11 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     [[NSNotificationCenter defaultCenter] postNotificationName:VPNManagerStatusDidChangeNotification object:self];
 }
 
-- (void)readPersistedErrorFromAppGroup {
-    NSUserDefaults *defaults = SSTPSharedDefaults();
-    NSString *code = [defaults stringForKey:SSTPAppGroupLastErrorCodeKey];
-    NSString *message = [defaults stringForKey:SSTPAppGroupLastErrorMessageKey];
-    NSString *stage = [defaults stringForKey:SSTPAppGroupLastStageKey];
+- (void)readCachedError {
+    NSUserDefaults *defaults = SSTPAppDefaults();
+    NSString *code = [defaults stringForKey:SSTPCachedLastErrorCodeKey];
+    NSString *message = [defaults stringForKey:SSTPCachedLastErrorMessageKey];
+    NSString *stage = [defaults stringForKey:SSTPCachedLastStageKey];
     if (stage.length > 0) {
         self.stage = stage;
     }
@@ -111,6 +113,34 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         self.lastErrorCode = code;
         self.lastErrorMessage = message;
     }
+}
+
+- (void)persistCachedError {
+    NSUserDefaults *defaults = SSTPAppDefaults();
+    if (self.lastErrorCode.length > 0) {
+        [defaults setObject:self.lastErrorCode forKey:SSTPCachedLastErrorCodeKey];
+        [defaults setObject:self.lastErrorMessage ?: @"" forKey:SSTPCachedLastErrorMessageKey];
+        [defaults setObject:self.stage ?: @"error" forKey:SSTPCachedLastErrorStageKey];
+        [defaults setObject:self.stage ?: @"error" forKey:SSTPCachedLastStageKey];
+    } else {
+        [defaults removeObjectForKey:SSTPCachedLastErrorCodeKey];
+        [defaults removeObjectForKey:SSTPCachedLastErrorMessageKey];
+        [defaults removeObjectForKey:SSTPCachedLastErrorStageKey];
+    }
+    if (self.stage.length > 0) {
+        [defaults setObject:self.stage forKey:SSTPCachedLastStageKey];
+    }
+    [defaults synchronize];
+}
+
+- (void)clearCachedError {
+    self.lastErrorCode = nil;
+    self.lastErrorMessage = nil;
+    NSUserDefaults *defaults = SSTPAppDefaults();
+    [defaults removeObjectForKey:SSTPCachedLastErrorCodeKey];
+    [defaults removeObjectForKey:SSTPCachedLastErrorMessageKey];
+    [defaults removeObjectForKey:SSTPCachedLastErrorStageKey];
+    [defaults synchronize];
 }
 
 - (void)applyStatusPayload:(NSDictionary *)payload {
@@ -126,11 +156,38 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         if ([code isKindOfClass:[NSString class]] && code.length > 0) {
             self.lastErrorCode = code;
             self.lastErrorMessage = [message isKindOfClass:[NSString class]] ? message : nil;
+            [self persistCachedError];
         }
     } else if ([payload[@"connected"] boolValue]) {
-        self.lastErrorCode = nil;
-        self.lastErrorMessage = nil;
+        [self clearCachedError];
+    } else {
+        [self persistCachedError];
     }
+}
+
+- (void)startStatusPollingIfNeeded {
+    if (self.statusPollTimer) return;
+    __weak typeof(self) weakSelf = self;
+    self.statusPollTimer = [NSTimer scheduledTimerWithTimeInterval:0.4
+                                                           repeats:YES
+                                                             block:^(NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        NEVPNStatus status = strongSelf.status;
+        if (status != NEVPNStatusConnecting &&
+            status != NEVPNStatusReasserting &&
+            status != NEVPNStatusDisconnecting) {
+            [strongSelf stopStatusPolling];
+            return;
+        }
+        [strongSelf refreshTunnelStatusWithCompletion:nil];
+    }];
+    [[NSRunLoop mainRunLoop] addTimer:self.statusPollTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopStatusPolling {
+    [self.statusPollTimer invalidate];
+    self.statusPollTimer = nil;
 }
 
 - (void)refreshTunnelStatusWithCompletion:(void (^)(void))completion {
@@ -138,7 +195,7 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     if (![session isKindOfClass:[NETunnelProviderSession class]] ||
         self.status == NEVPNStatusInvalid ||
         self.status == NEVPNStatusDisconnected) {
-        [self readPersistedErrorFromAppGroup];
+        [self readCachedError];
         if (completion) completion();
         [self notifyStatusChanged];
         return;
@@ -154,13 +211,13 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
             NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:responseData options:0 error:nil];
             [self applyStatusPayload:payload];
         } else {
-            [self readPersistedErrorFromAppGroup];
+            [self readCachedError];
         }
         if (completion) completion();
         [self notifyStatusChanged];
     }];
     if (!sent) {
-        [self readPersistedErrorFromAppGroup];
+        [self readCachedError];
         if (completion) completion();
         [self notifyStatusChanged];
     }
@@ -171,18 +228,21 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     if (status == NEVPNStatusConnected) {
         self.connectRequested = NO;
         self.stage = @"connected";
-        self.lastErrorCode = nil;
-        self.lastErrorMessage = nil;
+        [self clearCachedError];
+        [self stopStatusPolling];
     } else if (status == NEVPNStatusConnecting || status == NEVPNStatusReasserting) {
         if ([self.stage isEqualToString:@"idle"] || [self.stage isEqualToString:@"connected"] ||
             [self.stage isEqualToString:@"error"]) {
             self.stage = @"resolving";
         }
+        [self startStatusPollingIfNeeded];
     } else if (status == NEVPNStatusDisconnecting) {
         self.stage = @"disconnecting";
+        [self startStatusPollingIfNeeded];
     } else if (status == NEVPNStatusDisconnected) {
         self.connectRequested = NO;
-        [self readPersistedErrorFromAppGroup];
+        [self stopStatusPolling];
+        [self readCachedError];
         if (!self.lastErrorCode.length) {
             self.stage = @"idle";
         } else {
@@ -352,14 +412,9 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     NSString *pin = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsPin];
 
     self.connectRequested = YES;
-    self.lastErrorCode = nil;
-    self.lastErrorMessage = nil;
     self.stage = @"resolving";
-    NSUserDefaults *shared = SSTPSharedDefaults();
-    [shared removeObjectForKey:SSTPAppGroupLastErrorCodeKey];
-    [shared removeObjectForKey:SSTPAppGroupLastErrorStageKey];
-    [shared removeObjectForKey:SSTPAppGroupLastErrorMessageKey];
-    [shared synchronize];
+    [self clearCachedError];
+    [self startStatusPollingIfNeeded];
 
     NSMutableDictionary *options = [@{
         @"server": server,

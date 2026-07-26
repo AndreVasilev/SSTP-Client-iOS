@@ -53,18 +53,15 @@
 - `providerConfiguration` включает `tlsMode`, опционально `caPem` / `pinSha256`
 - Connect options передают plaintext password **и** TLS config
 - Старт из Settings без options работает через `passwordReference` в extension
-- На `NEVPNStatusDidChange` запрашивается `get_status` у session; при Disconnected читается App Group last error
+- На `NEVPNStatusDidChange` и таймером (~0.4s) во время Connecting поллится `get_status`
+- Last error кэшируется в app `NSUserDefaults` (без App Groups — profiles их не содержат)
 - Double-tap Connect защищён флагом `connectRequested`
 
 ## Shared contract
 
-`shared/SSTPShared.h` — App Group id (`group.<appBundleId>`), error domain, JSON message keys, UI copy для stage/code.
+`shared/SSTPShared.h` — error domain, JSON message keys, UI copy для stage/code, ключи app-local cache.
 
-Entitlements (app + tunnel):
-
-- `com.apple.security.application-groups`
-- `keychain-access-groups` (общий доступ к password reference)
-- CI script `scripts/apply_bundle_ids.sh` патчит App Group под `APP_BUNDLE_ID`
+Entitlements (app + tunnel): только `packet-tunnel-provider` (как в текущих provisioning profiles).
 
 ## KeychainHelper
 

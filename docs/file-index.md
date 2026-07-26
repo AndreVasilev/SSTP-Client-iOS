@@ -13,7 +13,7 @@
 | `com.vn.sstp/AppDelegate.m` | App lifecycle + шаблонный Core Data |
 | `com.vn.sstp/SceneDelegate.m` | Scene lifecycle |
 | `com.vn.sstp/Info.plist` | Display name, scene manifest |
-| `com.vn.sstp/com.vn.sstp.entitlements` | NE + App Group + keychain-access-groups |
+| `com.vn.sstp/com.vn.sstp.entitlements` | Network Extension entitlement |
 | `shared/SSTPShared.h` | App ↔ tunnel constants / error UI helpers |
 | `com.vn.sstp/Base.lproj/Main.storyboard` | Root scene → ViewController |
 | `com.vn.sstp/Base.lproj/LaunchScreen.storyboard` | Launch screen |
@@ -26,7 +26,7 @@
 | `tunnel/PacketTunnelProvider.m` | NE entry: start/stop, settings, reconnect, status IPC |
 | `tunnel/PacketTunnelProvider.h` | Provider interface |
 | `tunnel/Info.plist` | Extension point + principal class |
-| `tunnel/tunnel.entitlements` | NE + App Group + keychain-access-groups |
+| `tunnel/tunnel.entitlements` | Network Extension entitlement |
 | `tunnel/cacert.pem` | Bundled CA roots for OpenSSL verify |
 
 ## SSTP engine
