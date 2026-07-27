@@ -37,6 +37,7 @@
 | `sstp/sstp-ios-error.h` | Стабильные stage/error codes |
 | `sstp/sstp-ios-error.c` | Fatal/valid helpers for codes/stages |
 | `sstp/sstp-ios.c` | Lifecycle сессии, TLS trust, stages, event-loop glue |
+| `sstp/sstp-ios-trust.m` | iOS SecTrust bridge for SYSTEM TLS mode |
 | `sstp/ios-pppd.c` | In-process PPP/MSCHAPv2/IPCP/MPPE |
 | `sstp/sstp-mschapv2.c` | MSCHAPv2 / MPPE crypto helpers |
 | `sstp/sstp-mschapv2.h` | Headers helpers |

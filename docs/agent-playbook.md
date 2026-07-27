@@ -12,6 +12,7 @@
 | Shared App Group / error UI copy | `shared/SSTPShared.h` |
 | MTU, routes, DNS, packet loop, reconnect | `tunnel/PacketTunnelProvider.m` |
 | Session API / TLS connect / stages / errors | `sstp/sstp-ios.c`, `sstp/sstp-ios.h`, `sstp/sstp-ios-error.*` |
+| System TLS trust (SecTrust) | `sstp/sstp-ios-trust.m`, `sstp/sstp-ios-trust.h` |
 | PPP / MSCHAPv2 exchange / MPPE frames | `sstp/ios-pppd.c` |
 | Crypto helpers MSCHAPv2 | `sstp/sstp-mschapv2.c` + `tests/test_mschapv2.c` |
 | SSTP control / crypto binding | `sstp/sstp-state.c`, `sstp/sstp-packet.c`, `sstp/sstp-cmac.c` |
@@ -53,8 +54,8 @@
 
 | Mode | Когда |
 |------|-------|
-| `system` | Default; bundled `cacert.pem` + hostname |
-| `custom_ca` | Корпоративный/lab CA (PEM в UI) |
+| `system` | Default; **iOS SecTrust** (системные + MDM/корпоративные корни) + hostname |
+| `custom_ca` | Корпоративный/lab CA (PEM в UI, OpenSSL) |
 | `pinned` | SHA-256 leaf pin (64 hex) |
 | `insecure_debug` | Только Debug builds |
 

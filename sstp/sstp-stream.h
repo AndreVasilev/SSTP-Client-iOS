@@ -61,6 +61,11 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts);
  */
 long sstp_stream_verify_result(sstp_stream_st *ctx);
 
+/*!
+ * @brief Return the underlying OpenSSL SSL* (opaque), or NULL.
+ */
+void *sstp_stream_get_ssl(sstp_stream_st *ctx);
+
 
 /*!
  * @brief Check if the activity on the socket is longer than @a seconds

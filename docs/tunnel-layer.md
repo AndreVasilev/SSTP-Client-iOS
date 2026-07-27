@@ -10,7 +10,7 @@ Extension target `tunnel` — runtime, где живёт SSTP-сессия и pa
 | `tunnel/PacketTunnelProvider.h` | Интерфейс |
 | `tunnel/Info.plist` | Extension point + principal class |
 | `tunnel/tunnel.entitlements` | packet-tunnel + App Group + keychain-access-groups |
-| `tunnel/cacert.pem` | Bundled Mozilla CA roots for OpenSSL verify |
+| `tunnel/cacert.pem` | Bundled Mozilla CA roots for OpenSSL verify (custom_ca/pinned soft-load) |
 | `shared/SSTPShared.h` | Общие константы app ↔ extension |
 
 Principal class: `PacketTunnelProvider`  

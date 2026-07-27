@@ -33,7 +33,8 @@ void sstp_ios_session_free(session);
 Стабильные коды/стадии — в `sstp-ios-error.h` (`dns_resolve`, `tls_cert`, `auth_rejected`, …).  
 `sstp_ios_error_is_fatal(code)` определяет, можно ли auto-reconnect.
 
-Реализация: `sstp/sstp-ios.c`, хелперы контракта — `sstp/sstp-ios-error.c`.
+Реализация: `sstp/sstp-ios.c`, хелперы контракта — `sstp/sstp-ios-error.c`,
+iOS trust — `sstp/sstp-ios-trust.m`.
 
 ## Lifecycle сессии
 
@@ -43,16 +44,16 @@ create
        OpenSSL init
        options: NOLAUNCH | NOPLUGIN | NODAEMON | TLSEXT
                 (+ CERTWARN только для INSECURE_DEBUG)
-       TLS: SSL_VERIFY_PEER + system/bundled CA / custom CA / pin
+       TLS: SYSTEM → SecTrust (iOS trust store); CUSTOM_CA / PINNED → OpenSSL
        URL: https://<server>/  (port default 443)
        stages: resolving → tcp_tls → http_upgrade → sstp_control
                → ppp_* → applying_settings
        event_base + socketpairs (inject IP, stop)
        sstp_stream_create / connect (timeout 60)
   → run  (event_base_dispatch)
-       TLS connected
+       TLS connected (+ SecTrust for SYSTEM; fail → tls_cert)
        → HTTP SSTP handshake (sstp-http)
-       → sstp_verify_cert(CERT|NAME) — fail → tls_cert (abort)
+       → sstp_verify_cert(CERT|NAME) for non-SYSTEM — fail → tls_cert (abort)
        → SSTP state machine (sstp-state)
        → CALL_CONNECT
             sstp_pppd_create/start  (реализация = ios-pppd.c)
@@ -128,15 +129,17 @@ MRU: `1400`.
 
 | Mode | Поведение |
 |------|-----------|
-| `SYSTEM` (default) | `SSL_VERIFY_PEER`, bundled `cacert.pem` / system paths, chain + hostname |
-| `CUSTOM_CA` | PEM из params → `X509_STORE_add_cert` |
+| `SYSTEM` (default) | **iOS SecTrust** (системные + MDM/корпоративные корни) + hostname via SSL policy; OpenSSL не режет цепочку по Mozilla CA |
+| `CUSTOM_CA` | PEM из params → `X509_STORE_add_cert` (OpenSSL) |
 | `PINNED` | SHA-256 pin листа; mismatch → `tls_cert` |
 | `INSECURE_DEBUG` | Только Debug; `SSL_VERIFY_NONE` + `CERTWARN` |
 
 TLS handshake выполняется **явно после TCP connect** (до HTTP SSTP upgrade), чтобы ошибки сертификата не маскировались под `http_upgrade`.
 
+В `SYSTEM` после handshake цепочка (leaf + intermediates) передаётся в `SecTrustEvaluateWithError` (`sstp-ios-trust.m`). Корпоративный CA, уже установленный на iOS, принимается без PEM в UI.
+
 На fail verify: abort с `tls_cert`, **без** continue.  
-CA bundle для NE: `tunnel/cacert.pem` (путь через `SSTP_CA_BUNDLE`).
+CA bundle `tunnel/cacert.pem` остаётся для OpenSSL-режимов (и soft-load в SYSTEM).
 
 ## config.h
 

@@ -28,6 +28,10 @@
 		A11B00012B10000100B00006 /* sstp-ios.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00004 /* sstp-ios.c */; };
 		A11B00012B10000100B0000E /* sstp-ios-error.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B0000D /* sstp-ios-error.c */; };
 		A11B00012B10000100B0000F /* sstp-ios-error.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B0000D /* sstp-ios-error.c */; };
+		A11B00012B10000100B00011 /* sstp-ios-trust.m in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00010 /* sstp-ios-trust.m */; };
+		A11B00012B10000100B00012 /* sstp-ios-trust.m in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00010 /* sstp-ios-trust.m */; };
+		A11B00012B10000100B00014 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00013 /* Security.framework */; };
+		A11B00012B10000100B00015 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00013 /* Security.framework */; };
 		A11B00012B10000100B00009 /* sstp-mschapv2.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00008 /* sstp-mschapv2.c */; };
 		A11B00012B10000100B0000A /* sstp-mschapv2.c in Sources */ = {isa = PBXBuildFile; fileRef = A11B00012B10000100B00008 /* sstp-mschapv2.c */; };
 		7B84C0DA2AA585A700E6B3DD /* tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7B84C0D02AA585A700E6B3DD /* tunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -134,6 +138,9 @@
 		A11C00012B20000100C00001 /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; path = cacert.pem; sourceTree = "<group>"; };
 		A11B00012B10000100B0000C /* sstp-ios-error.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-ios-error.h"; sourceTree = "<group>"; };
 		A11B00012B10000100B0000D /* sstp-ios-error.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-ios-error.c"; sourceTree = "<group>"; };
+		A11B00012B10000100B00010 /* sstp-ios-trust.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "sstp-ios-trust.m"; sourceTree = "<group>"; };
+		A11B00012B10000100B00016 /* sstp-ios-trust.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "sstp-ios-trust.h"; sourceTree = "<group>"; };
+		A11B00012B10000100B00013 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		7B84C0E02AA5862A00E6B3DD /* sstp-fcs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-fcs.c"; sourceTree = "<group>"; };
 		7B84C0E12AA5862A00E6B3DD /* sstp-option.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-option.c"; sourceTree = "<group>"; };
 		7B84C0E22AA5862A00E6B3DD /* sstp-stream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "sstp-stream.c"; sourceTree = "<group>"; };
@@ -196,6 +203,7 @@
 				7B84C1282AA77D7000E6B3DD /* libssl.a in Frameworks */,
 				7B0C6F312AB759860039666C /* libevent.a in Frameworks */,
 				7B84C0CB2AA5856300E6B3DD /* NetworkExtension.framework in Frameworks */,
+				A11B00012B10000100B00014 /* Security.framework in Frameworks */,
 				7B84C12A2AA77D8300E6B3DD /* libcrypto.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -207,6 +215,7 @@
 				7B84C12B2AA77D9700E6B3DD /* libcrypto.a in Frameworks */,
 				7B0C6F352AB759A00039666C /* libevent.a in Frameworks */,
 				7B84C0D12AA585A700E6B3DD /* NetworkExtension.framework in Frameworks */,
+				A11B00012B10000100B00015 /* Security.framework in Frameworks */,
 				7B84C12C2AA77D9F00E6B3DD /* libssl.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -268,6 +277,7 @@
 				7B84C1292AA77D7900E6B3DD /* libcrypto.a */,
 				7B84C1272AA77D6600E6B3DD /* libssl.a */,
 				7B84C0CA2AA5856300E6B3DD /* NetworkExtension.framework */,
+				A11B00012B10000100B00013 /* Security.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -325,6 +335,8 @@
 				A11B00012B10000100B00007 /* sstp-ios.h */,
 				A11B00012B10000100B0000C /* sstp-ios-error.h */,
 				A11B00012B10000100B0000D /* sstp-ios-error.c */,
+				A11B00012B10000100B00016 /* sstp-ios-trust.h */,
+				A11B00012B10000100B00010 /* sstp-ios-trust.m */,
 				A11B00012B10000100B00008 /* sstp-mschapv2.c */,
 				A11B00012B10000100B0000B /* sstp-mschapv2.h */,
 				7B84C0F42AA5862B00E6B3DD /* sstp-pppd.h */,
@@ -474,6 +486,7 @@
 				A11B00012B10000100B00002 /* ios-pppd.c in Sources */,
 				A11B00012B10000100B00005 /* sstp-ios.c in Sources */,
 				A11B00012B10000100B0000E /* sstp-ios-error.c in Sources */,
+				A11B00012B10000100B00011 /* sstp-ios-trust.m in Sources */,
 				A11B00012B10000100B00009 /* sstp-mschapv2.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -506,6 +519,7 @@
 				A11B00012B10000100B00003 /* ios-pppd.c in Sources */,
 				A11B00012B10000100B00006 /* sstp-ios.c in Sources */,
 				A11B00012B10000100B0000F /* sstp-ios-error.c in Sources */,
+				A11B00012B10000100B00012 /* sstp-ios-trust.m in Sources */,
 				A11B00012B10000100B0000A /* sstp-mschapv2.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

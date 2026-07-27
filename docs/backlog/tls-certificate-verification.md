@@ -1,8 +1,10 @@
 # Backlog: TLS certificate verification
 
-## Status: DONE
+## Status: DONE (+ SecTrust for SYSTEM)
 
 Реализовано: `SSL_VERIFY_PEER` + bundled CA, SAN/hostname via OpenSSL helpers, custom CA / pin UI+config, `tls_cert` fatal в PQ channel, insecure_debug compile-gated, docs/tests.
+
+Дополнение: режим **SYSTEM** проверяет цепочку через **iOS SecTrust** (`sstp-ios-trust.m`), чтобы корни из Trust Store / MDM работали без вставки PEM.
 
 ## Summary
 

@@ -947,6 +947,14 @@ long sstp_stream_verify_result(sstp_stream_st *ctx)
     return SSL_get_verify_result(ctx->ssl);
 }
 
+void *sstp_stream_get_ssl(sstp_stream_st *ctx)
+{
+    if (!ctx) {
+        return NULL;
+    }
+    return ctx->ssl;
+}
+
 
 status_t sstp_stream_connect(sstp_stream_st *stream, struct sockaddr *addr,
         int alen, sstp_complete_fn complete, void *arg, int timeout)
