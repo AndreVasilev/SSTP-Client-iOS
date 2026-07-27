@@ -57,6 +57,11 @@ status_t sstp_http_get(sstp_buff_st *buf, int *code, int *count,
     /* Iterate through the headers */
     do
     {
+        if (index >= *count)
+        {
+            break;
+        }
+
         ret = sscanf(ptr1+1, "%[^:]: %[^\r\n]", array[index].name, 
                 array[index].value);
         if (ret != 2)
@@ -64,13 +69,14 @@ status_t sstp_http_get(sstp_buff_st *buf, int *code, int *count,
             break;
         }
 
-        ptr1 = strchr(ptr1+1, '\n');
-        if (index++ > *count)
+        index++;
+        ptr1 = strchr(ptr1, '\n');
+        if (!ptr1)
         {
             break;
         }
 
-    } while (ptr1 && ptr1[1] != '\r' && ptr1[1] != '\n');
+    } while (ptr1[1] != '\r' && ptr1[1] != '\n');
 
     /* Save the number of headers */
     *count = index;

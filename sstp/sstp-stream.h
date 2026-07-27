@@ -56,6 +56,11 @@ status_t sstp_get_cert_hash(sstp_stream_st *ctx, int proto,
  */
 status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts);
 
+/*!
+ * @brief Return SSL_get_verify_result for the peer, or X509_V_ERR_INVALID_CALL.
+ */
+long sstp_stream_verify_result(sstp_stream_st *ctx);
+
 
 /*!
  * @brief Check if the activity on the socket is longer than @a seconds

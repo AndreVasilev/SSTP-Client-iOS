@@ -15,7 +15,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <openssl/bio.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -23,6 +22,7 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#include <openssl/x509_vfy.h>
 
 /* private.h must come first: it defines status_t / stream / option types */
 #include "sstp-private.h"
@@ -479,9 +479,15 @@ static void ios_http_done(void *arg, int status)
     int vopts = SSTP_VERIFY_NONE;
 
     if (status != SSTP_OKAY) {
-        sstp_ios_fail_ex(SSTP_IOS_ERR_HTTP_UPGRADE,
-                         SSTP_IOS_STAGE_HTTP_UPGRADE,
-                         "HTTP handshake with SSTP server failed");
+        if (status == SSTP_TIMEOUT) {
+            sstp_ios_fail_ex(SSTP_IOS_ERR_HTTP_UPGRADE,
+                             SSTP_IOS_STAGE_HTTP_UPGRADE,
+                             "HTTP SSTP upgrade timed out");
+        } else {
+            sstp_ios_fail_ex(SSTP_IOS_ERR_HTTP_UPGRADE,
+                             SSTP_IOS_STAGE_HTTP_UPGRADE,
+                             "HTTP handshake with SSTP server failed");
+        }
         return;
     }
 
@@ -545,7 +551,6 @@ static void ios_connected(sstp_stream_st *stream, sstp_buff_st *buf,
 {
     sstp_client_st *client = ctx;
     status_t ret;
-    (void)stream;
     (void)buf;
 
     if (status == SSTP_TIMEOUT) {
@@ -555,9 +560,18 @@ static void ios_connected(sstp_stream_st *stream, sstp_buff_st *buf,
         return;
     }
     if (status != SSTP_CONNECTED) {
-        sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_HANDSHAKE,
-                         SSTP_IOS_STAGE_TCP_TLS,
-                         "Could not complete TLS handshake with SSTP server");
+        long vr = sstp_stream_verify_result(stream);
+        if (vr != X509_V_OK && vr != X509_V_ERR_INVALID_CALL) {
+            char msg[192];
+            snprintf(msg, sizeof(msg), "Server certificate verification failed: %s",
+                     X509_verify_cert_error_string(vr));
+            sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT,
+                             SSTP_IOS_STAGE_TCP_TLS, msg);
+        } else {
+            sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_HANDSHAKE,
+                             SSTP_IOS_STAGE_TCP_TLS,
+                             "Could not complete TLS handshake with SSTP server");
+        }
         return;
     }
 
