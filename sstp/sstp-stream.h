@@ -66,7 +66,6 @@ long sstp_stream_verify_result(sstp_stream_st *ctx);
  */
 void *sstp_stream_get_ssl(sstp_stream_st *ctx);
 
-
 /*!
  * @brief Check if the activity on the socket is longer than @a seconds
  */
