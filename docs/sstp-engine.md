@@ -133,6 +133,8 @@ MRU: `1400`.
 | `PINNED` | SHA-256 pin листа; mismatch → `tls_cert` |
 | `INSECURE_DEBUG` | Только Debug; `SSL_VERIFY_NONE` + `CERTWARN` |
 
+TLS handshake выполняется **явно после TCP connect** (до HTTP SSTP upgrade), чтобы ошибки сертификата не маскировались под `http_upgrade`.
+
 На fail verify: abort с `tls_cert`, **без** continue.  
 CA bundle для NE: `tunnel/cacert.pem` (путь через `SSTP_CA_BUNDLE`).
 

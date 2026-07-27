@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
+#include <openssl/err.h>
 
 #include "sstp-private.h"
 
@@ -110,6 +111,7 @@ struct sstp_stream
 
 static int sstp_operation_add_read(sstp_stream_st *ctx, sstp_buff_st *buf,
     int event, int timeout, sstp_complete_fn complete, void *arg);
+static void sstp_ssl_handshake_cont(int sock, short event, sstp_stream_st *stream);
 
 /*!
  * @brief Allocate a new operation or grab one from the cache
@@ -780,41 +782,169 @@ done:
 
 
 /**
+ * Arm the send event for an in-progress TLS handshake.
+ */
+static void sstp_ssl_handshake_arm(sstp_stream_st *stream, int event, int timeout)
+{
+    struct timeval tv;
+    struct timeval *ptv = NULL;
+
+    if (timeout > 0) {
+        event |= EV_TIMEOUT;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+        ptv = &tv;
+    }
+
+    if (event_pending(stream->ev_send, EV_READ | EV_WRITE | EV_TIMEOUT, NULL)) {
+        event_del(stream->ev_send);
+    }
+
+    event_set(stream->ev_send, stream->ssock, event,
+              (event_fn)sstp_ssl_handshake_cont, stream);
+    event_base_set(stream->ev_base, stream->ev_send);
+    if (event_add(stream->ev_send, ptv) != 0) {
+        log_err("Could not arm SSL handshake event");
+    }
+}
+
+/**
+ * Continue / finish the TLS handshake after TCP connect.
+ * Must keep the original connect operation at stream->send until done.
+ */
+static void sstp_ssl_handshake_cont(int sock, short event, sstp_stream_st *stream)
+{
+    sstp_operation_st *op = stream->send;
+    status_t status = SSTP_FAIL;
+    int ret;
+    int err;
+    int timeout = 60;
+    (void)sock;
+
+    if (!op) {
+        return;
+    }
+    if (op->tout.tv_sec > 0) {
+        timeout = (int)op->tout.tv_sec;
+    }
+
+    if (EV_TIMEOUT & event) {
+        log_err("SSL handshake timed out");
+        goto finish;
+    }
+
+    ERR_clear_error();
+    ret = SSL_do_handshake(stream->ssl);
+    err = SSL_get_error(stream->ssl, ret);
+
+    switch (err) {
+    case SSL_ERROR_NONE:
+        if (ret == 1) {
+            log_info("SSL handshake completed");
+            status = SSTP_CONNECTED;
+            goto finish;
+        }
+        break;
+
+    case SSL_ERROR_WANT_READ:
+        sstp_ssl_handshake_arm(stream, EV_READ, timeout);
+        return;
+
+    case SSL_ERROR_WANT_WRITE:
+        sstp_ssl_handshake_arm(stream, EV_WRITE, timeout);
+        return;
+
+    default: {
+        unsigned long e = ERR_peek_last_error();
+        long vr = SSL_get_verify_result(stream->ssl);
+        log_err("SSL handshake failed (ssl_err=%d verify=%ld openssl=%s)",
+                err, vr, e ? ERR_error_string(e, NULL) : "none");
+        if (vr != X509_V_OK) {
+            log_err("Peer certificate verify failed: %s",
+                    X509_verify_cert_error_string(vr));
+        }
+        goto finish;
+    }
+    }
+
+    log_err("SSL handshake returned unexpected result ret=%d err=%d", ret, err);
+
+finish:
+    stream->send = op->next;
+    op->next = stream->cache;
+    stream->cache = op;
+    op->complete(stream, NULL, op->arg, status);
+}
+
+/**
  * Called when asynchronous connect() completes, i.e. socket becomes writable.
  */
 static void sstp_connect_complete(int sock, short event, 
         sstp_stream_st *stream)
 {
     sstp_operation_st *op = NULL;
-    status_t status = SSTP_FAIL;
+    sstp_option_st *opts = NULL;
     int ret = -1;
+    (void)sock;
 
     op = stream->send;
-    stream->send = op->next;
+    if (!op) {
+        return;
+    }
 
     /* In case connect timed out */
     if (EV_TIMEOUT & event)
     {
         log_err("Connect timed out");
-        goto done;
+        stream->send = op->next;
+        op->next = stream->cache;
+        stream->cache = op;
+        op->complete(stream, NULL, op->arg, SSTP_TIMEOUT);
+        return;
     }
 
     ret = sstp_stream_setup(stream);
     if (SSTP_OKAY != ret)
     {
         log_err("Could not configure SSL socket");
-        goto done;
+        stream->send = op->next;
+        op->next = stream->cache;
+        stream->cache = op;
+        op->complete(stream, NULL, op->arg, SSTP_FAIL);
+        return;
     }
 
-    /* Success! */
-    status = SSTP_CONNECTED;
-    op->next = stream->cache;
-    stream->cache = op;
+    opts = stream->opts;
+    /* Enable OpenSSL hostname checking during handshake when possible. */
+    if (opts && opts->host && opts->host[0] && stream->ssl) {
+        struct in_addr a4;
+        int is_ip = (inet_pton(AF_INET, opts->host, &a4) == 1);
+#ifdef AF_INET6
+        struct in6_addr a6;
+        if (!is_ip) {
+            is_ip = (inet_pton(AF_INET6, opts->host, &a6) == 1);
+        }
+#endif
+        if (!is_ip) {
+#if OPENSSL_VERSION_NUMBER >= 0x10002000L
+            if (SSL_set1_host(stream->ssl, opts->host) != 1) {
+                log_warn("SSL_set1_host(%s) failed", opts->host);
+            }
+#endif
+        }
+    }
 
-done:
+    /* Perform TLS handshake before reporting CONNECTED so verify failures
+     * are not mis-attributed to the later HTTP SSTP upgrade. */
+    sstp_ssl_handshake_cont(sock, EV_WRITE, stream);
+}
 
-    /* Propagate the information */
-    op->complete(stream, NULL, op->arg, status);
+long sstp_stream_verify_result(sstp_stream_st *ctx)
+{
+    if (!ctx || !ctx->ssl) {
+        return X509_V_ERR_INVALID_CALL;
+    }
+    return SSL_get_verify_result(ctx->ssl);
 }
 
 
