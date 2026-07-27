@@ -152,15 +152,20 @@ static void sstp_recv_hello_complete(sstp_stream_st *client,
     sstp_buff_st *buf, void *ctx, status_t status)
 {
     sstp_http_st *http = (sstp_http_st*) ctx;
-    http_header_st array[7];
+    http_header_st array[32];
     http_header_st *entry;
-    int attr  = 7;
+    int attr  = (int)(sizeof(array) / sizeof(array[0]));
     int code  = 0;
     int ret   = 0;
 
     /* Handle timeout, error, etc */
     if (SSTP_OKAY != status)
     {
+        if (status == SSTP_TIMEOUT) {
+            log_err("HTTP SSTP hello timed out");
+        } else {
+            log_err("HTTP SSTP hello receive failed (%d)", status);
+        }
         goto done;
     }
 
@@ -178,19 +183,20 @@ static void sstp_recv_hello_complete(sstp_stream_st *client,
     /* HTTP status code must be 200 */
     if (code != 200)
     {
-        log_err("Error: Expected HTTP code 200");
+        log_err("SSTP HTTP upgrade rejected with status %d", code);
         goto done;
     }
 
-    /* Get the Content-Length if specified */
+    /* Spec uses ULONGLONG_MAX; some servers omit the header. Other lengths
+     * are non-conformant but still usable if status is 200. */
     entry = sstp_http_get_header("Content-Length", attr, array);
     if (entry != NULL)
     {
         unsigned long long length = strtoull(entry->value, NULL, 10);
         if (length != -1ULL)
         {
-            log_err("Error: Received invalid content length");
-            goto done;
+            log_warn("Non-standard SSTP Content-Length: %s (continuing)",
+                     entry->value);
         }
     }
 
