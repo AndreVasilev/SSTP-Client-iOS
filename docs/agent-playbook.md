@@ -29,7 +29,8 @@
 
 2. **Пароль: options и/или passwordReference**  
    Extension читает `options[@"password"]`, иначе разыменовывает `passwordReference`.  
-   App Group + keychain-access-groups должны совпадать у app и tunnel.
+   App Group (`group.<appBundleId>`) — для last error / stage между app и extension.  
+   Не добавляй `keychain-access-groups`, если профили этого не содержат: для VPN-пароля достаточно default Keychain app access.
 
 3. **Не возвращай `sstp-pppd.c` в Sources для iOS**  
    На устройстве нет внешнего pppd. Используется `ios-pppd.c`.

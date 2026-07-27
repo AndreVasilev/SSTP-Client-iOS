@@ -62,9 +62,9 @@
 
 Entitlements (app + tunnel):
 
-- `com.apple.security.application-groups`
-- `keychain-access-groups` (общий доступ к password reference)
-- CI script `scripts/apply_bundle_ids.sh` патчит App Group под `APP_BUNDLE_ID`
+- `packet-tunnel-provider`
+- App Group `group.<appBundleId>` (CI патчит из `group.cen.com-vn-sstp`)
+- Без `keychain-access-groups` (пароль в default app Keychain + start options)
 
 ## KeychainHelper
 

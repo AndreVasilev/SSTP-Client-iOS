@@ -94,17 +94,13 @@ text = patch_configs_for_bundle(text, tunnel_bundle_id, tunnel_profile)
 
 project_path.write_text(text)
 
-# Keep App Group / keychain access group aligned with the CI app bundle id.
+# Keep App Group id aligned with the CI app bundle id.
 for ent_path in (
     pathlib.Path("com.vn.sstp/com.vn.sstp.entitlements"),
     pathlib.Path("tunnel/tunnel.entitlements"),
 ):
     ent = ent_path.read_text()
     ent = ent.replace("group.cen.com-vn-sstp", f"group.{app_bundle_id}")
-    ent = ent.replace(
-        "$(AppIdentifierPrefix)cen.com-vn-sstp",
-        f"$(AppIdentifierPrefix){app_bundle_id}",
-    )
     ent_path.write_text(ent)
     print(f"Patched entitlements app group for {ent_path}")
 

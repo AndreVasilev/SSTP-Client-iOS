@@ -10,9 +10,5 @@
 	<array>
 		<string>group.cen.com-vn-sstp</string>
 	</array>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)cen.com-vn-sstp</string>
-	</array>
 </dict>
 </plist>
