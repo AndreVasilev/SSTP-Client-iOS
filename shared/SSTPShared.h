@@ -32,6 +32,71 @@ static NSString * const SSTPMsgActionGetStatus = @"get_status";
 static NSString * const SSTPConfigTLSModeKey = @"tlsMode";
 static NSString * const SSTPConfigCAPEMKey = @"caPem";
 static NSString * const SSTPConfigPinSHA256Key = @"pinSha256";
+static NSString * const SSTPConfigServerHostKey = @"serverHost";
+static NSString * const SSTPConfigServerPortKey = @"serverPort";
+
+static NSString * const SSTPAppGroupTunnelStartedKey = @"tunnelStarted";
+
+/** Split "host", "host:port", "https://host:port/path" into host + port (default 443). */
+static inline BOOL SSTPParseServerEndpoint(NSString * _Nullable server,
+                                           NSString * _Nullable * _Nullable hostOut,
+                                           NSString * _Nullable * _Nullable portOut) {
+    NSString *trimmed = [[server ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
+    if (trimmed.length == 0) {
+        return NO;
+    }
+
+    NSRange schemeRange = [trimmed rangeOfString:@"://"];
+    if (schemeRange.location != NSNotFound) {
+        trimmed = [trimmed substringFromIndex:schemeRange.location + schemeRange.length];
+    }
+
+    NSRange pathRange = [trimmed rangeOfString:@"/"];
+    if (pathRange.location != NSNotFound) {
+        trimmed = [trimmed substringToIndex:pathRange.location];
+    }
+
+    if ([trimmed hasPrefix:@"["]) {
+        NSRange closeBracket = [trimmed rangeOfString:@"]"];
+        if (closeBracket.location != NSNotFound) {
+            NSString *host = [trimmed substringWithRange:NSMakeRange(1, closeBracket.location - 1)];
+            NSString *rest = (closeBracket.location + 1 < trimmed.length)
+                ? [trimmed substringFromIndex:closeBracket.location + 1]
+                : @"";
+            if ([rest hasPrefix:@":"]) {
+                rest = [rest substringFromIndex:1];
+            }
+            if (hostOut) {
+                *hostOut = host;
+            }
+            if (portOut) {
+                *portOut = rest.length > 0 ? rest : @"443";
+            }
+            return host.length > 0;
+        }
+    }
+
+    NSRange colon = [trimmed rangeOfString:@":" options:NSBackwardsSearch];
+    if (colon.location != NSNotFound) {
+        NSString *host = [trimmed substringToIndex:colon.location];
+        NSString *port = [trimmed substringFromIndex:colon.location + 1];
+        if (hostOut) {
+            *hostOut = host;
+        }
+        if (portOut) {
+            *portOut = port.length > 0 ? port : @"443";
+        }
+        return host.length > 0;
+    }
+
+    if (hostOut) {
+        *hostOut = trimmed;
+    }
+    if (portOut) {
+        *portOut = @"443";
+    }
+    return YES;
+}
 
 typedef NS_ENUM(NSInteger, SSTPErrorNumericCode) {
     SSTPErrorNumericMissingCredentials = 1,

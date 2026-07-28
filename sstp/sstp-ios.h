@@ -24,7 +24,9 @@ typedef enum {
 } sstp_ios_tls_mode_t;
 
 typedef struct sstp_ios_start_params {
-    const char *server;
+    const char *server;          /* legacy combined endpoint or host */
+    const char *server_host;     /* optional explicit DNS/IP host for SNI/verify */
+    const char *server_port;     /* optional explicit TCP port (default 443) */
     const char *username;
     const char *password;
     sstp_ios_tls_mode_t tls_mode;

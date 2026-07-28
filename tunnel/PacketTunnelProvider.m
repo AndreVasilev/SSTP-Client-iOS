@@ -24,6 +24,8 @@ static const NSTimeInterval kSSTPStopTimeoutSeconds = 5.0;
 @property (nonatomic, copy, nullable) NSString *lastErrorCode;
 @property (nonatomic, copy, nullable) NSString *lastErrorMessage;
 @property (nonatomic, copy) NSString *server;
+@property (nonatomic, copy) NSString *serverHost;
+@property (nonatomic, copy) NSString *serverPort;
 @property (nonatomic, copy) NSString *username;
 @property (nonatomic, copy) NSString *password;
 @property (nonatomic, assign) sstp_ios_tls_mode_t tlsMode;
@@ -148,6 +150,39 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
 
 #pragma mark - Credentials / TLS config
 
+- (void)resolveServerEndpointFromProtocol:(NETunnelProviderProtocol *)proto
+                                  options:(NSDictionary *)options
+                                     host:(NSString * _Nullable * _Nullable)hostOut
+                                     port:(NSString * _Nullable * _Nullable)portOut
+                            legacyServer:(NSString * _Nullable * _Nullable)legacyOut {
+    NSDictionary *providerConfig = proto.providerConfiguration ?: @{};
+    NSString *legacy = options[@"server"] ?: providerConfig[@"server"] ?: proto.serverAddress ?: @"";
+    NSString *host = options[SSTPConfigServerHostKey] ?: providerConfig[SSTPConfigServerHostKey];
+    NSString *port = options[SSTPConfigServerPortKey] ?: providerConfig[SSTPConfigServerPortKey];
+
+    if (host.length == 0) {
+        NSString *parsedHost = nil;
+        NSString *parsedPort = nil;
+        if (SSTPParseServerEndpoint(legacy, &parsedHost, &parsedPort)) {
+            host = parsedHost;
+            port = parsedPort;
+        }
+    }
+    if (port.length == 0) {
+        port = @"443";
+    }
+
+    if (legacyOut) {
+        *legacyOut = legacy;
+    }
+    if (hostOut) {
+        *hostOut = host;
+    }
+    if (portOut) {
+        *portOut = port;
+    }
+}
+
 - (NSString *)passwordFromReference:(NSData *)passwordReference {
     if (passwordReference.length == 0) return @"";
     NSDictionary *query = @{
@@ -179,13 +214,38 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
     }
     self.caPem = options[SSTPConfigCAPEMKey] ?: providerConfig[SSTPConfigCAPEMKey];
     self.pinSha256 = options[SSTPConfigPinSHA256Key] ?: providerConfig[SSTPConfigPinSHA256Key];
+
+    NSString *tlsModeName = @"system";
+    switch (self.tlsMode) {
+        case SSTP_IOS_TLS_CUSTOM_CA: tlsModeName = @"custom_ca"; break;
+        case SSTP_IOS_TLS_PINNED: tlsModeName = @"pinned"; break;
+#if DEBUG
+        case SSTP_IOS_TLS_INSECURE_DEBUG: tlsModeName = @"insecure_debug"; break;
+#endif
+        default: break;
+    }
+    NSString *pinPrefix = self.pinSha256.length >= 8
+        ? [self.pinSha256 substringToIndex:8]
+        : (self.pinSha256.length ? self.pinSha256 : @"(none)");
+    NSLog(@"[SSTP tunnel] TLS config mode=%@ caPem_len=%lu pin_prefix=%@...",
+          tlsModeName,
+          (unsigned long)self.caPem.length,
+          pinPrefix);
 }
 
 #pragma mark - Start / stop
 
 - (void)startTunnelWithOptions:(NSDictionary *)options completionHandler:(void (^)(NSError *))completionHandler {
+    NSLog(@"[SSTP tunnel] startTunnelWithOptions invoked");
     NETunnelProviderProtocol *proto = (NETunnelProviderProtocol *)self.protocolConfiguration;
-    NSString *server = options[@"server"] ?: proto.serverAddress ?: @"";
+    NSString *legacyServer = @"";
+    NSString *serverHost = @"";
+    NSString *serverPort = @"443";
+    [self resolveServerEndpointFromProtocol:proto
+                                    options:options ?: @{}
+                                       host:&serverHost
+                                       port:&serverPort
+                              legacyServer:&legacyServer];
     NSString *username = options[@"username"] ?: proto.username ?: @"";
     NSString *password = options[@"password"] ?: @"";
 
@@ -202,7 +262,7 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
     [self clearPersistedError];
     [self loadTLSConfigFromProtocol:proto options:options ?: @{}];
 
-    if (server.length == 0 || username.length == 0 || password.length == 0) {
+    if (serverHost.length == 0 || username.length == 0 || password.length == 0) {
         NSError *error = SSTPMakeError(@(SSTP_IOS_ERR_MISSING_CREDENTIALS),
                                        @(SSTP_IOS_STAGE_ERROR),
                                        @"Не заданы сервер, логин или пароль");
@@ -214,14 +274,26 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
         return;
     }
 
-    self.server = server;
+    self.server = legacyServer.length > 0 ? legacyServer : serverHost;
+    self.serverHost = serverHost;
+    self.serverPort = serverPort;
     self.username = username;
     self.password = password;
+
+    NSUserDefaults *shared = SSTPSharedDefaults();
+    [shared setBool:YES forKey:SSTPAppGroupTunnelStartedKey];
+    [shared synchronize];
 
     NSString *caBundle = [[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"];
     if (caBundle.length > 0) {
         setenv("SSTP_CA_BUNDLE", caBundle.fileSystemRepresentation, 1);
+        NSLog(@"[SSTP tunnel] SSTP_CA_BUNDLE=%@", caBundle);
+    } else {
+        NSLog(@"[SSTP tunnel] bundled cacert.pem not found in extension bundle");
     }
+
+    NSLog(@"[SSTP tunnel] startTunnel host=%@ port=%@ legacy=%@ user=%@ generation=%lu",
+          serverHost, serverPort, self.server, username, (unsigned long)(self.sessionGeneration + 1));
 
     [self beginSessionWithGeneration:++self.sessionGeneration];
 }
@@ -239,16 +311,25 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
 
     self.session = sstp_ios_session_create(on_ready, on_packet, on_stage, on_fail, (__bridge void *)self);
     NSString *serverCopy = [self.server copy];
+    NSString *serverHostCopy = [self.serverHost copy];
+    NSString *serverPortCopy = [self.serverPort copy];
     NSString *userCopy = [self.username copy];
     NSString *passCopy = [self.password copy];
     NSString *caCopy = [self.caPem copy];
     NSString *pinCopy = [self.pinSha256 copy];
     sstp_ios_tls_mode_t tlsMode = self.tlsMode;
 
+    self.currentStage = @(SSTP_IOS_STAGE_RESOLVING);
+    [self persistStatus];
+    NSLog(@"[SSTP tunnel] worker starting host=%@ port=%@ tlsMode=%d",
+          serverHostCopy, serverPortCopy, (int)tlsMode);
+
     self.workerThread = [[NSThread alloc] initWithBlock:^{
         sstp_ios_start_params_t params;
         memset(&params, 0, sizeof(params));
         params.server = serverCopy.UTF8String;
+        params.server_host = serverHostCopy.UTF8String;
+        params.server_port = serverPortCopy.UTF8String;
         params.username = userCopy.UTF8String;
         params.password = passCopy.UTF8String;
         params.tls_mode = tlsMode;
@@ -285,6 +366,8 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
     self.lastErrorCode = code;
     self.lastErrorMessage = message;
     self.currentStage = stage.length ? stage : @(SSTP_IOS_STAGE_ERROR);
+    NSLog(@"[SSTP tunnel] session failure code=%@ stage=%@ message=%@ attempt=%ld",
+          code, self.currentStage, message, (long)self.reconnectAttempt);
     [self persistStatus];
 
     BOOL fatal = sstp_ios_error_is_fatal(code.UTF8String) != 0;
@@ -416,6 +499,9 @@ static void on_fail(void *ctx, const char *code, const char *stage, const char *
     self.reconnectScheduled = NO;
     self.packetLoopRunning = NO;
     self.currentStage = @(SSTP_IOS_STAGE_DISCONNECTING);
+    NSUserDefaults *shared = SSTPSharedDefaults();
+    [shared setBool:NO forKey:SSTPAppGroupTunnelStartedKey];
+    [shared synchronize];
     if (reason == NEProviderStopReasonUserInitiated) {
         self.lastErrorCode = @(SSTP_IOS_ERR_CANCELLED);
         self.lastErrorMessage = @"Отключено пользователем";

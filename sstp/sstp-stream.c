@@ -112,6 +112,7 @@ struct sstp_stream
 static int sstp_operation_add_read(sstp_stream_st *ctx, sstp_buff_st *buf,
     int event, int timeout, sstp_complete_fn complete, void *arg);
 static void sstp_ssl_handshake_cont(int sock, short event, sstp_stream_st *stream);
+static int sstp_http_header_complete(const sstp_buff_st *buf);
 
 /*!
  * @brief Allocate a new operation or grab one from the cache
@@ -375,11 +376,29 @@ static int sstp_host_is_ip_literal(const char *host)
     return 0;
 }
 
+static void sstp_log_x509_one_liner(const char *label, X509 *cert)
+{
+    char subj[256];
+    char issr[256];
+    if (!cert) {
+        log_debug("TLS cert %s: (null)", label ? label : "peer");
+        return;
+    }
+    subj[0] = issr[0] = '\0';
+    X509_NAME_oneline(X509_get_subject_name(cert), subj, (int)sizeof(subj));
+    X509_NAME_oneline(X509_get_issuer_name(cert), issr, (int)sizeof(issr));
+    log_debug("TLS cert %s subject=%s issuer=%s", label ? label : "peer", subj, issr);
+}
+
 status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
 {
     status_t status = SSTP_FAIL;
     X509 *peer = NULL;
-    
+    int is_ip = sstp_host_is_ip_literal(host);
+
+    log_debug("sstp_verify_cert host=%s opts=0x%x ip_literal=%d",
+              host ? host : "(null)", opts, is_ip);
+
     /* Get the peer certificate */
     peer = SSL_get_peer_certificate(ctx->ssl);
     if (!peer)
@@ -387,6 +406,7 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
         log_err("Could not get peer certificate");
         goto done;
     }
+    sstp_log_x509_one_liner("peer", peer);
 
     /* Verify the certificate chain */
     if (SSTP_VERIFY_CERT & opts)
@@ -398,6 +418,7 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
                     X509_verify_cert_error_string(ret), ret);
             goto done;
         }
+        log_debug("OpenSSL chain verify OK (verify_result=%d)", ret);
     }
 
     /* Verify hostname via SAN (preferred) with CN fallback inside OpenSSL helper */
@@ -412,9 +433,10 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
 
         /* IP-literal servers need an explicit IP SAN / pin / custom CA policy.
          * X509_check_ip_asc covers iPAddress SANs; DNS mismatch alone is not enough. */
-        if (sstp_host_is_ip_literal(host)) {
+        if (is_ip) {
             if (X509_check_ip_asc(peer, host, 0) == 1) {
                 matched = 1;
+                log_debug("Certificate matched IP literal host via IP SAN: %s", host);
             }
             if (!matched) {
                 log_info("Certificate did not match IP literal host: %s", host);
@@ -424,6 +446,7 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
             /* DNS name: SAN + wildcard per OpenSSL rules; falls back to CN. */
             if (X509_check_host(peer, host, 0, 0, NULL) == 1) {
                 matched = 1;
+                log_debug("Certificate matched DNS host: %s", host);
             }
             if (!matched) {
                 log_info("The certificate did not match the host: %s", host);
@@ -434,10 +457,14 @@ status_t sstp_verify_cert(sstp_stream_st *ctx, const char *host, int opts)
 
     /* Success */
     status = SSTP_OKAY;
+    log_debug("sstp_verify_cert succeeded for host=%s", host);
 
 done:
     if (peer) {
         X509_free(peer);
+    }
+    if (status != SSTP_OKAY) {
+        log_info("sstp_verify_cert failed for host=%s opts=0x%x", host ? host : "(null)", opts);
     }
     return status;
 }
@@ -526,15 +553,36 @@ status_t sstp_stream_recv_http(sstp_stream_st *ctx, sstp_buff_st *buf,
             goto done;
         }
 
-    // Read until we hit the end of the HTTP header
-    } while (buf->off < 2 ||
-            (buf->data[buf->off-1] != '\n' && buf->data[buf->off-0] != '\n'));
+    /* Read until we hit the end of the HTTP header */
+    } while (!sstp_http_header_complete(buf));
 
     status = SSTP_OKAY;
 
 done:
 
     return status;
+}
+
+static int sstp_http_header_complete(const sstp_buff_st *buf)
+{
+    int n;
+    if (!buf || !buf->data) {
+        return 0;
+    }
+    n = buf->off;
+    if (n >= 4 &&
+        buf->data[n - 4] == '\r' &&
+        buf->data[n - 3] == '\n' &&
+        buf->data[n - 2] == '\r' &&
+        buf->data[n - 1] == '\n') {
+        return 1;
+    }
+    if (n >= 2 &&
+        buf->data[n - 2] == '\n' &&
+        buf->data[n - 1] == '\n') {
+        return 1;
+    }
+    return 0;
 }
 
 
@@ -759,8 +807,15 @@ static status_t sstp_stream_setup(sstp_stream_st *stream)
     if (opts->enable & SSTP_OPT_TLSEXT &&
         !SSL_set_tlsext_host_name(stream->ssl, opts->host ?: opts->server)) 
     {
-        log_err("Unable to set TLS hostname extension");
+        log_err("Unable to set TLS hostname extension for %s",
+                opts->host ?: opts->server ?: "(null)");
         goto done;
+    }
+    if (opts->enable & SSTP_OPT_TLSEXT) {
+        log_debug("TLS SNI set to %s (server=%s host=%s)",
+                  opts->host ?: opts->server ?: "(null)",
+                  opts->server ?: "(null)",
+                  opts->host ?: "(null)");
     }
 
     /* Set Client Mode (connect) */
@@ -840,7 +895,10 @@ static void sstp_ssl_handshake_cont(int sock, short event, sstp_stream_st *strea
     switch (err) {
     case SSL_ERROR_NONE:
         if (ret == 1) {
-            log_info("SSL handshake completed");
+            long vr = SSL_get_verify_result(stream->ssl);
+            log_info("SSL handshake completed verify_result=%ld (%s)",
+                     vr,
+                     vr == X509_V_OK ? "OK" : X509_verify_cert_error_string(vr));
             status = SSTP_CONNECTED;
             goto finish;
         }
@@ -870,6 +928,11 @@ static void sstp_ssl_handshake_cont(int sock, short event, sstp_stream_st *strea
     log_err("SSL handshake returned unexpected result ret=%d err=%d", ret, err);
 
 finish:
+    /* Important: clear active/pending send event before the upper-layer callback.
+     * Otherwise, immediate HTTP hello send may be queued but never armed. */
+    if (event_pending(stream->ev_send, EV_READ | EV_WRITE | EV_TIMEOUT, NULL)) {
+        event_del(stream->ev_send);
+    }
     stream->send = op->next;
     op->next = stream->cache;
     stream->cache = op;
@@ -925,12 +988,18 @@ static void sstp_connect_complete(int sock, short event,
             is_ip = (inet_pton(AF_INET6, opts->host, &a6) == 1);
         }
 #endif
+        log_debug("TLS connect_complete host=%s server=%s ip_literal=%d",
+                  opts->host, opts->server ?: "(null)", is_ip);
         if (!is_ip) {
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L
             if (SSL_set1_host(stream->ssl, opts->host) != 1) {
                 log_warn("SSL_set1_host(%s) failed", opts->host);
+            } else {
+                log_debug("SSL_set1_host(%s) OK", opts->host);
             }
 #endif
+        } else {
+            log_debug("Skipping SSL_set1_host for IP literal %s", opts->host);
         }
     }
 
@@ -945,6 +1014,14 @@ long sstp_stream_verify_result(sstp_stream_st *ctx)
         return X509_V_ERR_INVALID_CALL;
     }
     return SSL_get_verify_result(ctx->ssl);
+}
+
+void *sstp_stream_get_ssl(sstp_stream_st *ctx)
+{
+    if (!ctx) {
+        return NULL;
+    }
+    return ctx->ssl;
 }
 
 

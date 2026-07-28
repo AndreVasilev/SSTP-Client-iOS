@@ -158,6 +158,8 @@ static void sstp_recv_hello_complete(sstp_stream_st *client,
     int code  = 0;
     int ret   = 0;
 
+    log_debug("HTTP hello receive complete status=%d bytes=%d", status, buf ? buf->off : -1);
+
     /* Handle timeout, error, etc */
     if (SSTP_OKAY != status)
     {
@@ -186,6 +188,7 @@ static void sstp_recv_hello_complete(sstp_stream_st *client,
         log_err("SSTP HTTP upgrade rejected with status %d", code);
         goto done;
     }
+    log_info("SSTP HTTP upgrade accepted with status %d", code);
 
     /* Spec uses ULONGLONG_MAX; some servers omit the header. Other lengths
      * are non-conformant but still usable if status is 200. */
@@ -220,6 +223,8 @@ static void sstp_http_send_complete(sstp_stream_st *stream, sstp_buff_st *buf,
         http->done_cb(http->uarg, SSTP_FAIL);
         return;
     }
+
+    log_debug("HTTP hello sent, waiting response timeout=60s");
 
     /* Setup a receiver for HTTP messages */
     sstp_stream_setrecv(stream, sstp_stream_recv_http, http->buf,
@@ -286,9 +291,22 @@ static status_t sstp_http_send_hello(sstp_http_st *http,
         return ret;
     }
 
+    log_debug("Sending SSTP HTTP hello host=%s uuid=%s bytes=%d",
+              http->server ? http->server : "(null)",
+              http->uuid,
+              http->buf ? http->buf->len : -1);
+
     /* Send the buffer */
-    return sstp_stream_send(stream, http->buf, (sstp_complete_fn)
+    ret = sstp_stream_send(stream, http->buf, (sstp_complete_fn)
             sstp_http_send_complete, http, 10);
+    if (ret == SSTP_OKAY) {
+        /* Sync-send path: callback is not invoked by stream layer.
+         * Arm HTTP receive explicitly as if async send completed. */
+        log_debug("SSTP HTTP hello sent synchronously, arming receive path");
+        sstp_http_send_complete(stream, http->buf, http, SSTP_OKAY);
+        return SSTP_INPROG;
+    }
+    return ret;
 }
 
 

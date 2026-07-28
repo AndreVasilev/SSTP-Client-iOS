@@ -28,6 +28,7 @@
 #include "sstp-private.h"
 #include "sstp-client.h"
 #include "sstp-ios.h"
+#include "sstp-ios-trust.h"
 
 void sstp_pppd_set_ip_handler(sstp_pppd_st *ctx, void (*fn)(void *, const uint8_t *, int), void *arg);
 void sstp_pppd_set_mppe_keys(sstp_pppd_st *ctx, const uint8_t skey[16], const uint8_t rkey[16]);
@@ -62,6 +63,29 @@ struct sstp_ios_session {
 };
 
 static sstp_ios_session_t *g_current;
+
+static const char *ios_tls_mode_name(sstp_ios_tls_mode_t mode)
+{
+    switch (mode) {
+    case SSTP_IOS_TLS_SYSTEM: return "system";
+    case SSTP_IOS_TLS_CUSTOM_CA: return "custom_ca";
+    case SSTP_IOS_TLS_PINNED: return "pinned";
+    case SSTP_IOS_TLS_INSECURE_DEBUG: return "insecure_debug";
+    default: return "unknown";
+    }
+}
+
+static void ios_log_x509_line(const char *label, X509 *cert, int depth)
+{
+    char subj[256];
+    char issr[256];
+    if (!cert) return;
+    subj[0] = issr[0] = '\0';
+    X509_NAME_oneline(X509_get_subject_name(cert), subj, (int)sizeof(subj));
+    X509_NAME_oneline(X509_get_issuer_name(cert), issr, (int)sizeof(issr));
+    log_debug("TLS verify depth=%d %s subject=%s issuer=%s",
+              depth, label ? label : "cert", subj, issr);
+}
 
 void sstp_ios_set_stage(const char *stage)
 {
@@ -230,13 +254,19 @@ static int ios_load_custom_ca(SSL_CTX *ssl_ctx, const char *pem, size_t pem_len)
 
 static int ios_load_bundled_or_default_ca(SSL_CTX *ssl_ctx)
 {
+    const char *loaded_from = NULL;
+
     /* Prefer OpenSSL default paths (useful on host tests); then common bundle names. */
     if (SSL_CTX_set_default_verify_paths(ssl_ctx) == 1) {
+        loaded_from = "OpenSSL default verify paths";
+        log_debug("CA store loaded from %s", loaded_from);
         return 0;
     }
     ERR_clear_error();
 #ifdef SSTP_IOS_CA_BUNDLE_PATH
     if (SSL_CTX_load_verify_locations(ssl_ctx, SSTP_IOS_CA_BUNDLE_PATH, NULL) == 1) {
+        loaded_from = SSTP_IOS_CA_BUNDLE_PATH;
+        log_debug("CA store loaded from compile-time bundle %s", loaded_from);
         return 0;
     }
     ERR_clear_error();
@@ -246,22 +276,31 @@ static int ios_load_bundled_or_default_ca(SSL_CTX *ssl_ctx)
         char path[1024];
         const char *home = getenv("SSTP_CA_BUNDLE");
         if (home && home[0] && SSL_CTX_load_verify_locations(ssl_ctx, home, NULL) == 1) {
+            loaded_from = home;
+            log_debug("CA store loaded from SSTP_CA_BUNDLE=%s", loaded_from);
             return 0;
         }
         /* Relative fallbacks used by unit/host tooling */
         if (SSL_CTX_load_verify_locations(ssl_ctx, "cacert.pem", NULL) == 1) {
+            loaded_from = "cacert.pem";
+            log_debug("CA store loaded from %s", loaded_from);
             return 0;
         }
         snprintf(path, sizeof(path), "%s", "/etc/ssl/cert.pem");
         if (SSL_CTX_load_verify_locations(ssl_ctx, path, NULL) == 1) {
+            loaded_from = path;
+            log_debug("CA store loaded from %s", loaded_from);
             return 0;
         }
         snprintf(path, sizeof(path), "%s", "/etc/ssl/certs/ca-certificates.crt");
         if (SSL_CTX_load_verify_locations(ssl_ctx, path, NULL) == 1) {
+            loaded_from = path;
+            log_debug("CA store loaded from %s", loaded_from);
             return 0;
         }
     }
     ERR_clear_error();
+    log_warn("Could not load any OpenSSL CA store (bundled/system paths unavailable)");
     return -1;
 }
 
@@ -284,23 +323,164 @@ static int ios_verify_callback(int preverify_ok, X509_STORE_CTX *xctx)
     sstp_ios_session_t *session = g_current;
     X509 *cert;
     int depth;
+    int err;
+    const char *errstr;
 
     if (!session) return preverify_ok;
     if (session->tls_mode == SSTP_IOS_TLS_INSECURE_DEBUG) {
         return 1;
     }
 
+    /* System mode: OpenSSL must not reject corporate roots that exist only in
+     * the iOS trust store. Defer chain+hostname to SecTrust after handshake. */
+    if (session->tls_mode == SSTP_IOS_TLS_SYSTEM) {
+        depth = X509_STORE_CTX_get_error_depth(xctx);
+        cert = X509_STORE_CTX_get_current_cert(xctx);
+        ios_log_x509_line("system-defer", cert, depth);
+        return 1;
+    }
+
     depth = X509_STORE_CTX_get_error_depth(xctx);
     cert = X509_STORE_CTX_get_current_cert(xctx);
+    err = X509_STORE_CTX_get_error(xctx);
+    errstr = X509_verify_cert_error_string(err);
+    ios_log_x509_line("verify-callback", cert, depth);
+    log_debug("TLS verify callback depth=%d preverify_ok=%d err=%d (%s)",
+              depth, preverify_ok, err, errstr ? errstr : "unknown");
 
     if (session->tls_mode == SSTP_IOS_TLS_PINNED && depth == 0 && cert) {
         if (ios_pin_matches(cert, session->pin_sha256_hex)) {
+            log_debug("Pinned leaf certificate hash matched");
             return 1;
         }
+        log_info("Pinned leaf certificate hash mismatch");
         return 0;
     }
 
+    if (!preverify_ok) {
+        log_info("OpenSSL preverify failed at depth=%d: %s (%d)",
+                 depth, errstr ? errstr : "unknown", err);
+    }
     return preverify_ok;
+}
+
+static int ios_x509_to_der(X509 *cert, unsigned char **out, size_t *out_len)
+{
+    int len;
+    unsigned char *buf = NULL;
+    unsigned char *p;
+
+    if (!cert || !out || !out_len) return -1;
+    len = i2d_X509(cert, NULL);
+    if (len <= 0) return -1;
+    buf = malloc((size_t)len);
+    if (!buf) return -1;
+    p = buf;
+    if (i2d_X509(cert, &p) != len) {
+        free(buf);
+        return -1;
+    }
+    *out = buf;
+    *out_len = (size_t)len;
+    return 0;
+}
+
+/**
+ * Evaluate peer chain via iOS SecTrust (SYSTEM TLS mode).
+ * Returns 0 on success, -1 on failure (fail_ex already called).
+ */
+static int ios_evaluate_system_trust(sstp_stream_st *stream, const char *hostname)
+{
+    SSL *ssl;
+    X509 *leaf = NULL;
+    STACK_OF(X509) *chain = NULL;
+    unsigned char **ders = NULL;
+    size_t *lens = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    size_t i;
+    int rc = -1;
+    char errmsg[192];
+
+    log_info("Evaluating server certificate via iOS SecTrust for host=%s",
+             hostname ? hostname : "(null)");
+
+    ssl = (SSL *)sstp_stream_get_ssl(stream);
+    if (!ssl) {
+        sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT, SSTP_IOS_STAGE_TCP_TLS,
+                         "No SSL session for system trust evaluation");
+        return -1;
+    }
+
+    leaf = SSL_get_peer_certificate(ssl);
+    if (!leaf) {
+        sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT, SSTP_IOS_STAGE_TCP_TLS,
+                         "Server did not present a certificate");
+        return -1;
+    }
+    ios_log_x509_line("sectrust-leaf", leaf, 0);
+
+    chain = SSL_get_peer_cert_chain(ssl);
+    capacity = 1 + (size_t)(chain ? sk_X509_num(chain) : 0);
+    ders = calloc(capacity, sizeof(*ders));
+    lens = calloc(capacity, sizeof(*lens));
+    if (!ders || !lens) {
+        sstp_ios_fail_ex(SSTP_IOS_ERR_INTERNAL, SSTP_IOS_STAGE_TCP_TLS,
+                         "Out of memory building certificate chain");
+        goto done;
+    }
+
+    if (ios_x509_to_der(leaf, &ders[count], &lens[count]) != 0) {
+        sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT, SSTP_IOS_STAGE_TCP_TLS,
+                         "Could not encode peer certificate");
+        goto done;
+    }
+    log_debug("SecTrust chain[%zu] leaf DER len=%zu", count, lens[count]);
+    count++;
+
+    if (chain) {
+        int n = sk_X509_num(chain);
+        for (i = 0; i < (size_t)n; i++) {
+            X509 *cert = sk_X509_value(chain, (int)i);
+            if (!cert) continue;
+            /* Peer chain often includes the leaf again — skip duplicates. */
+            if (X509_cmp(cert, leaf) == 0) continue;
+            if (ios_x509_to_der(cert, &ders[count], &lens[count]) != 0) {
+                sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT, SSTP_IOS_STAGE_TCP_TLS,
+                                 "Could not encode intermediate certificate");
+                goto done;
+            }
+            log_debug("SecTrust chain[%zu] intermediate DER len=%zu", count, lens[count]);
+            count++;
+        }
+    }
+
+    errmsg[0] = '\0';
+    if (sstp_ios_sec_trust_evaluate((const unsigned char *const *)ders, lens,
+                                    count, hostname, errmsg, sizeof(errmsg)) != 0) {
+        log_info("SecTrust rejected certificate for %s: %s",
+                 hostname ? hostname : "(null)",
+                 errmsg[0] ? errmsg : "unknown reason");
+        sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT, SSTP_IOS_STAGE_TCP_TLS,
+                         errmsg[0] ? errmsg
+                                   : "iOS system trust rejected server certificate");
+        goto done;
+    }
+
+    log_info("iOS system trust accepted server certificate for %s (chain_len=%zu)",
+             hostname, count);
+    rc = 0;
+
+done:
+    if (leaf) X509_free(leaf);
+    if (ders) {
+        for (i = 0; i < count; i++) {
+            free(ders[i]);
+        }
+        free(ders);
+    }
+    free(lens);
+    return rc;
 }
 
 static status_t ios_init_ssl(sstp_ios_session_t *session)
@@ -333,22 +513,37 @@ static status_t ios_init_ssl(sstp_ios_session_t *session)
     SSL_CTX_set_verify(client->ssl_ctx, verify_mode, ios_verify_callback);
 
     if (session->tls_mode == SSTP_IOS_TLS_CUSTOM_CA) {
+        log_info("TLS init mode=custom_ca ca_pem_len=%zu", session->ca_pem_len);
         if (ios_load_custom_ca(client->ssl_ctx, session->ca_pem, session->ca_pem_len) != 0) {
             log_err("Failed to load custom CA PEM");
             return SSTP_FAIL;
         }
     } else if (session->tls_mode == SSTP_IOS_TLS_PINNED) {
+        log_info("TLS init mode=pinned pin=%s",
+                 session->pin_sha256_hex[0] ? "set" : "missing");
         /* Pinning validates leaf hash in callback; still load roots for date/path when possible. */
         (void)ios_load_bundled_or_default_ca(client->ssl_ctx);
         if (!session->pin_sha256_hex[0]) {
             log_err("Pinned TLS mode requires pin_sha256_hex");
             return SSTP_FAIL;
         }
+    } else if (session->tls_mode == SSTP_IOS_TLS_SYSTEM) {
+        log_info("TLS init mode=system (trust via iOS SecTrust after handshake)");
+        /* Trust decision is SecTrust (iOS trust store / MDM roots). Bundled
+         * Mozilla CA is optional and unused for accept/reject. */
+        (void)ios_load_bundled_or_default_ca(client->ssl_ctx);
+        SSL_CTX_set_verify(client->ssl_ctx,
+                           SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+                           ios_verify_callback);
     } else {
+        log_info("TLS init mode=%s (OpenSSL bundled/system CA store)",
+                 ios_tls_mode_name(session->tls_mode));
         if (ios_load_bundled_or_default_ca(client->ssl_ctx) != 0) {
             log_warn("Could not load system/bundled CA store; certificate verify may fail");
         }
     }
+
+    log_debug("TLS verify_mode=0x%x", SSL_CTX_get_verify_mode(client->ssl_ctx));
 
     return SSTP_OKAY;
 }
@@ -494,13 +689,21 @@ static void ios_http_done(void *arg, int status)
     sstp_http_free(client->http);
     client->http = NULL;
 
-    if (!session || session->tls_mode != SSTP_IOS_TLS_INSECURE_DEBUG) {
+    /* SYSTEM trust was already evaluated via SecTrust right after TLS handshake. */
+    if (session && session->tls_mode == SSTP_IOS_TLS_SYSTEM) {
+        log_debug("Skipping post-HTTP OpenSSL verify (system mode uses SecTrust)");
+        /* fall through to SSTP control */
+    } else if (!session || session->tls_mode != SSTP_IOS_TLS_INSECURE_DEBUG) {
+        const char *verify_host = opts->host ?: opts->server;
+        log_debug("Post-HTTP OpenSSL verify for host=%s mode=%s",
+                  verify_host ? verify_host : "(null)",
+                  session ? ios_tls_mode_name(session->tls_mode) : "none");
         vopts = SSTP_VERIFY_CERT | SSTP_VERIFY_NAME;
-        status = sstp_verify_cert(client->stream, opts->host ?: opts->server, vopts);
+        status = sstp_verify_cert(client->stream, verify_host, vopts);
         if (status != SSTP_OKAY) {
             sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT,
                              SSTP_IOS_STAGE_TCP_TLS,
-                             "Server certificate verification failed");
+                             "Server certificate verification failed (chain or hostname)");
             return;
         }
         if (session && session->tls_mode == SSTP_IOS_TLS_PINNED &&
@@ -560,19 +763,37 @@ static void ios_connected(sstp_stream_st *stream, sstp_buff_st *buf,
         return;
     }
     if (status != SSTP_CONNECTED) {
+        sstp_ios_session_t *session = g_current;
         long vr = sstp_stream_verify_result(stream);
-        if (vr != X509_V_OK && vr != X509_V_ERR_INVALID_CALL) {
+        /* SYSTEM mode defers chain trust to SecTrust; OpenSSL verify_result
+         * is not authoritative and must not mask real handshake failures. */
+        if (session && session->tls_mode == SSTP_IOS_TLS_SYSTEM) {
+            log_info("TLS handshake failed in system mode (SecTrust not reached) verify=%ld",
+                     vr);
+            sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_HANDSHAKE,
+                             SSTP_IOS_STAGE_TCP_TLS,
+                             "Could not complete TLS handshake with SSTP server");
+        } else if (vr != X509_V_OK && vr != X509_V_ERR_INVALID_CALL) {
             char msg[192];
             snprintf(msg, sizeof(msg), "Server certificate verification failed: %s",
                      X509_verify_cert_error_string(vr));
+            log_info("TLS handshake/cert verify failed: %s", msg);
             sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_CERT,
                              SSTP_IOS_STAGE_TCP_TLS, msg);
         } else {
+            log_info("TLS handshake failed verify=%ld", vr);
             sstp_ios_fail_ex(SSTP_IOS_ERR_TLS_HANDSHAKE,
                              SSTP_IOS_STAGE_TCP_TLS,
                              "Could not complete TLS handshake with SSTP server");
         }
         return;
+    }
+
+    if (g_current && g_current->tls_mode == SSTP_IOS_TLS_SYSTEM) {
+        const char *host = client->option.host ?: client->option.server;
+        if (ios_evaluate_system_trust(stream, host) != 0) {
+            return;
+        }
     }
 
     sstp_ios_set_stage(SSTP_IOS_STAGE_HTTP_UPGRADE);
@@ -586,6 +807,7 @@ static void ios_connected(sstp_stream_st *stream, sstp_buff_st *buf,
     }
 
     ret = sstp_http_handshake(client->http, client->stream);
+    log_debug("sstp_http_handshake returned %d", ret);
     if (ret != SSTP_OKAY && ret != SSTP_INPROG) {
         sstp_ios_fail_ex(SSTP_IOS_ERR_HTTP_UPGRADE,
                          SSTP_IOS_STAGE_HTTP_UPGRADE,
@@ -709,9 +931,23 @@ int sstp_ios_session_start_ex(sstp_ios_session_t *session,
     OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_CIPHERS |
                         OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
 #endif
-    sstp_log_init("sstp-ios", SSTP_LOG_INFO, SSTP_OPT_STDERR | SSTP_OPT_LINENO);
+    sstp_log_init("sstp-ios", SSTP_LOG_DEBUG, SSTP_OPT_STDERR | SSTP_OPT_LINENO);
 
-    opt->server = strdup(params->server);
+    log_info("SSTP session start server=%s host=%s port=%s user=%s tls_mode=%s ca_pem=%s pin=%s",
+             params->server ? params->server : "(null)",
+             (params->server_host && params->server_host[0]) ? params->server_host : "(auto)",
+             (params->server_port && params->server_port[0]) ? params->server_port : "(auto)",
+             params->username,
+             ios_tls_mode_name(params->tls_mode),
+             (params->ca_pem && params->ca_pem_len > 0) ? "set" : "none",
+             (params->pin_sha256_hex && params->pin_sha256_hex[0]) ? "set" : "none");
+
+    {
+        const char *endpoint_host = (params->server_host && params->server_host[0])
+            ? params->server_host
+            : params->server;
+        opt->server = endpoint_host ? strdup(endpoint_host) : NULL;
+    }
     opt->user = strdup(params->username);
     opt->password = strdup(params->password);
     /* CERTWARN only for explicit insecure debug; production rejects bad certs. */
@@ -721,19 +957,39 @@ int sstp_ios_session_start_ex(sstp_ios_session_t *session,
         opt->enable |= SSTP_OPT_CERTWARN;
     }
 
-    snprintf(urlbuf, sizeof(urlbuf), "https://%s/", params->server);
+    if (params->server_host && params->server_host[0] &&
+        params->server_port && params->server_port[0]) {
+        snprintf(urlbuf, sizeof(urlbuf), "https://%s:%s/",
+                 params->server_host, params->server_port);
+    } else if (params->server_host && params->server_host[0]) {
+        snprintf(urlbuf, sizeof(urlbuf), "https://%s/", params->server_host);
+    } else {
+        snprintf(urlbuf, sizeof(urlbuf), "https://%s/", params->server);
+    }
     ret = sstp_url_parse(&client->url, urlbuf);
     if (ret != SSTP_OKAY) {
+        const char *fallback_host = (params->server_host && params->server_host[0])
+            ? params->server_host
+            : params->server;
+        const char *fallback_port = (params->server_port && params->server_port[0])
+            ? params->server_port
+            : "443";
         client->url = calloc(1, sizeof(*client->url));
         if (!client->url) return -1;
-        client->url->host = strdup(params->server);
+        client->url->host = strdup(fallback_host);
         client->url->schema = strdup("https");
-        client->url->port = strdup("443");
+        client->url->port = strdup(fallback_port);
+        log_warn("URL parse failed for %s; using explicit host=%s port=%s",
+                 urlbuf, fallback_host, fallback_port);
     }
     if (client->url && !client->url->port) {
         client->url->port = (char *)"443";
     }
     opt->host = client->url->host;
+    log_info("Parsed SSTP URL host=%s port=%s schema=%s",
+             client->url->host ?: "(null)",
+             client->url->port ?: "(null)",
+             client->url->schema ?: "(null)");
 
     client->ev_base = event_base_new();
     if (!client->ev_base) {

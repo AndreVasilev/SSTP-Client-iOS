@@ -22,7 +22,22 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
 @property (nonatomic, copy, nullable) NSString *lastErrorCode;
 @property (nonatomic, copy, nullable) NSString *lastErrorMessage;
 @property (nonatomic, assign) BOOL connectRequested;
+@property (nonatomic, assign) BOOL startWatchdogScheduled;
 @end
+
+static NSTimeInterval const kSSTPStartWatchdogSeconds = 4.0;
+
+static NSString *SSTPNevpnStatusName(NEVPNStatus status) {
+    switch (status) {
+        case NEVPNStatusInvalid: return @"Invalid";
+        case NEVPNStatusDisconnected: return @"Disconnected";
+        case NEVPNStatusConnecting: return @"Connecting";
+        case NEVPNStatusConnected: return @"Connected";
+        case NEVPNStatusReasserting: return @"Reasserting";
+        case NEVPNStatusDisconnecting: return @"Disconnecting";
+    }
+    return @"Unknown";
+}
 
 @implementation VPNManager
 
@@ -95,6 +110,76 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     return @"Неизвестно";
 }
 
+- (void)logProfileDiagnosticsWithLabel:(NSString *)label {
+    NETunnelProviderProtocol *proto = (NETunnelProviderProtocol *)self.manager.protocolConfiguration;
+    NSLog(@"[SSTP app] profile %@ enabled=%d status=%@ provider=%@ serverAddress=%@",
+          label,
+          self.manager.enabled,
+          SSTPNevpnStatusName(self.status),
+          proto.providerBundleIdentifier ?: @"(nil)",
+          proto.serverAddress ?: @"(nil)");
+    if ([proto isKindOfClass:[NETunnelProviderProtocol class]]) {
+        NSDictionary *cfg = proto.providerConfiguration ?: @{};
+        NSLog(@"[SSTP app] profile config server=%@ host=%@ port=%@ tlsMode=%@",
+              cfg[@"server"] ?: @"(nil)",
+              cfg[SSTPConfigServerHostKey] ?: @"(nil)",
+              cfg[SSTPConfigServerPortKey] ?: @"(nil)",
+              cfg[SSTPConfigTLSModeKey] ?: @"(nil)");
+    }
+}
+
+- (void)cancelStartWatchdog {
+    self.startWatchdogScheduled = NO;
+}
+
+- (void)scheduleStartWatchdogFromStatus:(NEVPNStatus)statusAtStart {
+    [self cancelStartWatchdog];
+    self.startWatchdogScheduled = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kSSTPStartWatchdogSeconds * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (!self.startWatchdogScheduled || !self.connectRequested) {
+            return;
+        }
+        self.startWatchdogScheduled = NO;
+
+        NEVPNStatus current = self.status;
+        if (current == NEVPNStatusConnecting ||
+            current == NEVPNStatusConnected ||
+            current == NEVPNStatusReasserting) {
+            return;
+        }
+
+        [self readPersistedErrorFromAppGroup];
+        NSUserDefaults *shared = SSTPSharedDefaults();
+        BOOL tunnelStarted = [shared boolForKey:SSTPAppGroupTunnelStartedKey];
+        NSString *persistedStage = [shared stringForKey:SSTPAppGroupLastStageKey] ?: @"idle";
+
+        if (tunnelStarted &&
+            persistedStage.length > 0 &&
+            ![persistedStage isEqualToString:@"idle"]) {
+            self.stage = persistedStage;
+            NSLog(@"[SSTP app] watchdog: extension active stage=%@ vpnStatus=%@",
+                  persistedStage, SSTPNevpnStatusName(current));
+            [self notifyStatusChanged];
+            return;
+        }
+
+        self.connectRequested = NO;
+        self.stage = @"error";
+        self.lastErrorCode = @"internal";
+        self.lastErrorMessage =
+            [NSString stringWithFormat:
+             @"VPN extension не запустился (status %@ → %@, tunnelStarted=%d, stage=%@). "
+             @"Проверьте VPN-профиль, entitlements и логи extension.",
+             SSTPNevpnStatusName(statusAtStart),
+             SSTPNevpnStatusName(current),
+             tunnelStarted,
+             persistedStage];
+        NSLog(@"[SSTP app] watchdog fail: %@", self.lastErrorMessage);
+        [self notifyStatusChanged];
+    });
+}
+
 - (void)notifyStatusChanged {
     [[NSNotificationCenter defaultCenter] postNotificationName:VPNManagerStatusDidChangeNotification object:self];
 }
@@ -126,6 +211,7 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         if ([code isKindOfClass:[NSString class]] && code.length > 0) {
             self.lastErrorCode = code;
             self.lastErrorMessage = [message isKindOfClass:[NSString class]] ? message : nil;
+            NSLog(@"[SSTP app] applied error code=%@ message=%@", code, self.lastErrorMessage);
         }
     } else if ([payload[@"connected"] boolValue]) {
         self.lastErrorCode = nil;
@@ -139,6 +225,13 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         self.status == NEVPNStatusInvalid ||
         self.status == NEVPNStatusDisconnected) {
         [self readPersistedErrorFromAppGroup];
+        NSUserDefaults *shared = SSTPSharedDefaults();
+        BOOL tunnelStarted = [shared boolForKey:SSTPAppGroupTunnelStartedKey];
+        NSLog(@"[SSTP app] tunnel status (no live session) vpnStatus=%@ stage=%@ tunnelStarted=%d lastError=%@",
+              SSTPNevpnStatusName(self.status),
+              self.stage,
+              tunnelStarted,
+              self.lastErrorCode ?: @"(none)");
         if (completion) completion();
         [self notifyStatusChanged];
         return;
@@ -153,6 +246,8 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         if (responseData.length > 0) {
             NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:responseData options:0 error:nil];
             [self applyStatusPayload:payload];
+            NSLog(@"[SSTP app] tunnel status stage=%@ connected=%@ lastError=%@",
+                  payload[@"stage"], payload[@"connected"], payload[@"lastError"]);
         } else {
             [self readPersistedErrorFromAppGroup];
         }
@@ -160,6 +255,7 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         [self notifyStatusChanged];
     }];
     if (!sent) {
+        NSLog(@"[SSTP app] sendProviderMessage failed: %@", sendError.localizedDescription ?: @"(unknown)");
         [self readPersistedErrorFromAppGroup];
         if (completion) completion();
         [self notifyStatusChanged];
@@ -169,11 +265,13 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
 - (void)vpnStatusDidChange:(NSNotification *)notification {
     NEVPNStatus status = self.status;
     if (status == NEVPNStatusConnected) {
+        [self cancelStartWatchdog];
         self.connectRequested = NO;
         self.stage = @"connected";
         self.lastErrorCode = nil;
         self.lastErrorMessage = nil;
     } else if (status == NEVPNStatusConnecting || status == NEVPNStatusReasserting) {
+        [self cancelStartWatchdog];
         if ([self.stage isEqualToString:@"idle"] || [self.stage isEqualToString:@"connected"] ||
             [self.stage isEqualToString:@"error"]) {
             self.stage = @"resolving";
@@ -181,6 +279,7 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     } else if (status == NEVPNStatusDisconnecting) {
         self.stage = @"disconnecting";
     } else if (status == NEVPNStatusDisconnected) {
+        [self cancelStartWatchdog];
         self.connectRequested = NO;
         [self readPersistedErrorFromAppGroup];
         if (!self.lastErrorCode.length) {
@@ -263,8 +362,19 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
     }
 
     NSString *mode = tlsMode.length ? tlsMode : @"system";
+    NSString *serverHost = nil;
+    NSString *serverPort = nil;
+    if (!SSTPParseServerEndpoint(trimmedServer, &serverHost, &serverPort)) {
+        if (completion) {
+            completion(SSTPMakeError(@"missing_credentials", @"error", @"Некорректный адрес сервера"));
+        }
+        return;
+    }
+
     NSMutableDictionary *providerConfiguration = [@{
         @"server": trimmedServer,
+        SSTPConfigServerHostKey: serverHost,
+        SSTPConfigServerPortKey: serverPort,
         @"username": trimmedUser,
         SSTPConfigTLSModeKey: mode,
     } mutableCopy];
@@ -344,50 +454,88 @@ static NSString * const kPrefsPin = @"sstp.pinSha256";
         return;
     }
 
-    NSString *server = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsServer] ?: @"";
-    NSString *username = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsUsername] ?: @"";
-    NSString *password = [KeychainHelper passwordForAccount:kPasswordAccount error:nil] ?: @"";
-    NSString *tlsMode = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsTLSMode] ?: @"system";
-    NSString *caPem = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsCAPEM];
-    NSString *pin = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsPin];
+    [self.manager loadFromPreferencesWithCompletionHandler:^(NSError *loadError) {
+        if (loadError) {
+            NSLog(@"[SSTP app] loadFromPreferences failed: %@", loadError.localizedDescription);
+            if (completion) completion(loadError);
+            return;
+        }
 
-    self.connectRequested = YES;
-    self.lastErrorCode = nil;
-    self.lastErrorMessage = nil;
-    self.stage = @"resolving";
-    NSUserDefaults *shared = SSTPSharedDefaults();
-    [shared removeObjectForKey:SSTPAppGroupLastErrorCodeKey];
-    [shared removeObjectForKey:SSTPAppGroupLastErrorStageKey];
-    [shared removeObjectForKey:SSTPAppGroupLastErrorMessageKey];
-    [shared synchronize];
+        [self logProfileDiagnosticsWithLabel:@"before-connect"];
 
-    NSMutableDictionary *options = [@{
-        @"server": server,
-        @"username": username,
-        @"password": password,
-        SSTPConfigTLSModeKey: tlsMode,
-    } mutableCopy];
-    if (caPem.length > 0) options[SSTPConfigCAPEMKey] = caPem;
-    if (pin.length > 0) options[SSTPConfigPinSHA256Key] = pin;
+        NSString *server = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsServer] ?: @"";
+        NSString *username = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsUsername] ?: @"";
+        NSString *password = [KeychainHelper passwordForAccount:kPasswordAccount error:nil] ?: @"";
+        NSString *tlsMode = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsTLSMode] ?: @"system";
+        NSString *caPem = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsCAPEM];
+        NSString *pin = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefsPin];
 
-    NSError *startError = nil;
-    BOOL started = [self.manager.connection startVPNTunnelWithOptions:options
-                                                       andReturnError:&startError];
+        NSString *serverHost = nil;
+        NSString *serverPort = nil;
+        if (!SSTPParseServerEndpoint(server, &serverHost, &serverPort)) {
+            if (completion) {
+                completion(SSTPMakeError(@"missing_credentials", @"error", @"Некорректный адрес сервера"));
+            }
+            return;
+        }
 
-    if (!started) {
-        self.connectRequested = NO;
-        self.stage = @"error";
-        self.lastErrorCode = @"internal";
-        self.lastErrorMessage = startError.localizedDescription;
-        if (completion) completion(startError);
+        self.connectRequested = YES;
+        self.lastErrorCode = nil;
+        self.lastErrorMessage = nil;
+        self.stage = @"resolving";
+        NSUserDefaults *shared = SSTPSharedDefaults();
+        [shared removeObjectForKey:SSTPAppGroupLastErrorCodeKey];
+        [shared removeObjectForKey:SSTPAppGroupLastErrorStageKey];
+        [shared removeObjectForKey:SSTPAppGroupLastErrorMessageKey];
+        [shared removeObjectForKey:SSTPAppGroupLastStageKey];
+        [shared setBool:NO forKey:SSTPAppGroupTunnelStartedKey];
+        [shared synchronize];
+
+        NSMutableDictionary *options = [@{
+            @"server": server,
+            SSTPConfigServerHostKey: serverHost,
+            SSTPConfigServerPortKey: serverPort,
+            @"username": username,
+            @"password": password,
+            SSTPConfigTLSModeKey: tlsMode,
+        } mutableCopy];
+        if (caPem.length > 0) options[SSTPConfigCAPEMKey] = caPem;
+        if (pin.length > 0) options[SSTPConfigPinSHA256Key] = pin;
+
+        NSLog(@"[SSTP app] connect server=%@ host=%@ port=%@ user=%@ tlsMode=%@ caPem_len=%lu pin=%@",
+              server, serverHost, serverPort, username, tlsMode,
+              (unsigned long)caPem.length,
+              pin.length ? @"set" : @"none");
+
+        NEVPNStatus statusBeforeStart = self.status;
+        NSError *startError = nil;
+        BOOL started = [self.manager.connection startVPNTunnelWithOptions:options
+                                                           andReturnError:&startError];
+
+        NSLog(@"[SSTP app] startVPNTunnel started=%d statusBefore=%@ statusAfter=%@ error=%@",
+              started,
+              SSTPNevpnStatusName(statusBeforeStart),
+              SSTPNevpnStatusName(self.status),
+              startError.localizedDescription ?: @"(none)");
+
+        if (!started) {
+            self.connectRequested = NO;
+            self.stage = @"error";
+            self.lastErrorCode = @"internal";
+            self.lastErrorMessage = startError.localizedDescription ?: @"Не удалось запустить VPN-туннель";
+            if (completion) completion(startError);
+            [self notifyStatusChanged];
+            return;
+        }
+
+        [self scheduleStartWatchdogFromStatus:statusBeforeStart];
+        if (completion) completion(nil);
         [self notifyStatusChanged];
-        return;
-    }
-    if (completion) completion(nil);
-    [self notifyStatusChanged];
+    }];
 }
 
 - (void)disconnect {
+    [self cancelStartWatchdog];
     self.connectRequested = NO;
     self.stage = @"disconnecting";
     [self.manager.connection stopVPNTunnel];
