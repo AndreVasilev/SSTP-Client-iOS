@@ -60,8 +60,9 @@ Xcode testables в scheme **нет**.
 
 ### `ios-testflight.yml`
 
-- Triggers: push `main` / `cursor/**`, `workflow_dispatch`
+- Triggers: push `main`, `workflow_dispatch`, schedule (каждые 80 дней)
 - Runner: `macos-26`
+- Расписание: cron `0 6 * * *` (ежедневная проверка в 06:00 UTC); сборка запускается, когда `(unix_day % 80) == 0`
 - Env:
   - `APP_BUNDLE_ID=ru.altatec.sstp-client`
   - `TUNNEL_BUNDLE_ID=ru.altatec.sstp-client.tunnel`
