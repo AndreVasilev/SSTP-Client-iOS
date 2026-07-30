@@ -5,8 +5,8 @@ on:
     branches:
       - main
   schedule:
-    # GitHub cron не поддерживает интервал «каждые N дней» — проверяем ежедневно.
-    - cron: '0 6 * * *'
+    # 1-е число каждого квартала (янв, апр, июл, окт) в 06:00 UTC (~каждые 90 дней).
+    - cron: '0 6 1 1,4,7,10 *'
   workflow_dispatch:
 
 concurrency:
@@ -14,31 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  schedule-guard:
-    if: github.event_name == 'schedule'
-    name: Check 80-day interval
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-    steps:
-      - name: Check if today is an 80-day cycle
-        id: check
-        run: |
-          day=$(( $(date -u +%s) / 86400 ))
-          if [ $(( day % 80 )) -eq 0 ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Day ${day}: 80-day interval reached, build will run."
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Day ${day}: skipping (next run in $(( 80 - day % 80 )) days)."
-          fi
-
   build-and-upload:
     name: Build and upload to TestFlight
-    needs: schedule-guard
-    if: |
-      github.event_name != 'schedule' ||
-      needs.schedule-guard.outputs.should_run == 'true'
     runs-on: macos-26
     timeout-minutes: 90
 
