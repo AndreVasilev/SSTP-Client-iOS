@@ -62,7 +62,7 @@ Xcode testables в scheme **нет**.
 
 - Triggers: push `main`, `workflow_dispatch`, schedule (ежеквартально)
 - Runner: `macos-26`
-- Расписание: cron `0 6 1 1,4,7,10 *` — 1-е число января, апреля, июля и октября в 06:00 UTC (~каждые 90 дней)
+- Расписание: cron `0 6 1 1,4,7,10 *` — 1-е число января, апреля, июля и октября в 06:00 UTC
 - Env:
   - `APP_BUNDLE_ID=ru.altatec.sstp-client`
   - `TUNNEL_BUNDLE_ID=ru.altatec.sstp-client.tunnel`
